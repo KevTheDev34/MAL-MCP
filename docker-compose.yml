@@ -1,0 +1,15 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      APP_SECRET_KEY: replace_me_dev_only
+      DATABASE_URL: sqlite:////data/mal_assistant.db
+      LOG_LEVEL: INFO
+    volumes:
+      - mal_assistant_data:/data
+
+volumes:
+  mal_assistant_data:

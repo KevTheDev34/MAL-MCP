@@ -4,34 +4,34 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 0 — Behavioral specification
 
-- [ ] Create `docs/behavior.md`
-- [ ] Define supported intents
-- [ ] Define status mappings
-- [ ] Define title ambiguity policy
-- [ ] Define confirmation policy
-- [ ] Define bulk failure policy
-- [ ] Define no-op behavior
-- [ ] Define overwrite warnings
-- [ ] Define undo conflict behavior
+- [x] Create `docs/behavior.md`
+- [x] Define supported intents
+- [x] Define status mappings
+- [x] Define title ambiguity policy
+- [x] Define confirmation policy
+- [x] Define bulk failure policy
+- [x] Define no-op behavior
+- [x] Define overwrite warnings
+- [x] Define undo conflict behavior
 
 ## Phase 1 — Project foundation
 
-- [ ] Initialize Python 3.12 project
-- [ ] Add FastAPI
-- [ ] Add Pydantic settings
-- [ ] Add SQLAlchemy
-- [ ] Add Alembic
-- [ ] Add SQLite
-- [ ] Add structured logging
-- [ ] Add `/health`
-- [ ] Add pytest
-- [ ] Add ruff
-- [ ] Add mypy
-- [ ] Add Dockerfile
-- [ ] Add Docker Compose
-- [ ] Add `.env.example`
-- [ ] Add initial README
-- [ ] Add CI configuration
+- [x] Initialize Python 3.12 project
+- [x] Add FastAPI
+- [x] Add Pydantic settings
+- [x] Add SQLAlchemy
+- [x] Add Alembic
+- [x] Add SQLite
+- [x] Add structured logging
+- [x] Add `/health`
+- [x] Add pytest
+- [x] Add ruff
+- [x] Add mypy
+- [x] Add Dockerfile
+- [x] Add Docker Compose
+- [x] Add `.env.example`
+- [x] Add initial README
+- [x] Add CI configuration
 
 ## Phase 2 — MAL OAuth
 
