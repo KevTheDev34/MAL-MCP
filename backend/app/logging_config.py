@@ -7,7 +7,7 @@ import re
 from typing import Final
 
 _SENSITIVE_KEY_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"(token|secret|password|api[_-]?key|authorization|credential)",
+    r"(token|secret|password|api[_-]?key|authorization|credential|code_verifier)",
     re.IGNORECASE,
 )
 
@@ -15,7 +15,11 @@ _REDACTED: Final[str] = "***REDACTED***"
 
 _KEY_VALUE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"(?i)\b([\w-]*(?:token|secret|password|api[_-]?key|authorization|"
-    r"credential)[\w-]*)\s*([:=])\s*([^\s,;]+)"
+    r"credential|code_verifier)[\w-]*)\s*([:=])\s*([^\s,;]+)"
+)
+
+_BEARER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"(?i)\b(Bearer)\s+([A-Za-z0-9\-._~+/]+=*)"
 )
 
 
@@ -47,7 +51,9 @@ def _redact_value(key: str, value: object) -> object:
 
 
 def _redact_text(text: str) -> str:
-    return _KEY_VALUE_PATTERN.sub(rf"\1\2{_REDACTED}", text)
+    # Bearer headers first so key=value redaction does not leave the token behind.
+    redacted = _BEARER_PATTERN.sub(rf"\1 {_REDACTED}", text)
+    return _KEY_VALUE_PATTERN.sub(rf"\1\2{_REDACTED}", redacted)
 
 
 def configure_logging(level: str = "INFO") -> None:

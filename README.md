@@ -52,3 +52,19 @@ mypy backend/app
 - `AGENTS.md` — agent coding boundaries
 - `IMPLEMENTATION_CHECKLIST.md` — phase tracker
 - `docs/behavior.md` — behavioral contract
+- `docs/oauth-setup.md` — register a MAL API app and connect OAuth
+
+## Connect MAL (Phase 2)
+
+1. Follow [`docs/oauth-setup.md`](docs/oauth-setup.md) to register a MAL API
+   client and set `MAL_CLIENT_ID`, `MAL_CLIENT_SECRET`, `MAL_REDIRECT_URI`, and
+   `TOKEN_ENCRYPTION_KEY`.
+2. Run migrations and start the app.
+3. Open `http://localhost:8000/auth/mal/start`, authorize, then check status:
+
+```bash
+curl -s http://localhost:8000/auth/mal/status
+curl -s -X POST http://localhost:8000/auth/mal/disconnect
+```
+
+OAuth tokens are encrypted at rest and are never returned by the API.

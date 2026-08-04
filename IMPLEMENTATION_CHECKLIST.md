@@ -35,18 +35,18 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 2 — MAL OAuth
 
-- [ ] Implement OAuth state generation
-- [ ] Implement authorization redirect
-- [ ] Implement callback
-- [ ] Validate state
-- [ ] Exchange code for tokens
-- [ ] Encrypt tokens
-- [ ] Store MAL user identity
-- [ ] Refresh tokens
-- [ ] Add disconnect
-- [ ] Add connection status
-- [ ] Test expired and invalid state
-- [ ] Verify tokens never appear in logs
+- [x] Implement OAuth state generation
+- [x] Implement authorization redirect
+- [x] Implement callback
+- [x] Validate state
+- [x] Exchange code for tokens
+- [x] Encrypt tokens
+- [x] Store MAL user identity
+- [x] Refresh tokens
+- [x] Add disconnect
+- [x] Add connection status
+- [x] Test expired and invalid state
+- [x] Verify tokens never appear in logs
 
 ## Phase 3 — MAL client
 
