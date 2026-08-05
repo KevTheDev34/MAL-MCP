@@ -56,6 +56,7 @@ mypy backend/app
 - `docs/mal-client.md` — raw MAL API client, retries, and manual reversible test
 - `docs/domain.md` — application-domain models, validation, and lifecycle states
 - `docs/resolver.md` — deterministic title resolution, scoring, and aliases
+- `docs/commands.md` — plan / confirm / apply / verify workflow
 
 ## Connect MAL (Phase 2)
 
@@ -95,6 +96,26 @@ After connecting OAuth, resolve a title without writing to MAL:
 ```bash
 python scripts/resolve_title.py "Steins;Gate"
 python scripts/resolve_title.py "Pluto" --media manga
+```
+
+## Command workflow (Phase 6)
+
+Structured plan → confirm → apply → verify lives in `backend/app/commands/`.
+See [`docs/commands.md`](docs/commands.md).
+
+```bash
+alembic upgrade head
+
+python scripts/plan_mal_change.py \
+  --media anime \
+  --title "Steins;Gate" \
+  --score 8 \
+  --plan-only
+
+python scripts/plan_mal_change.py \
+  --media anime \
+  --title "Steins;Gate" \
+  --score 8
 ```
 
 After connecting OAuth, you can also run a reversible list update against a

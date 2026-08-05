@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     session_cookie_name: str = "mal_assistant_session"
 
     plan_expiration_minutes: int = 30
+    max_plan_changes: int = 25
     request_timeout_seconds: int = 15
     oauth_state_expiration_minutes: int = 10
     token_refresh_skew_seconds: int = 60

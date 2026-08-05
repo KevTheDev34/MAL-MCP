@@ -10,8 +10,15 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth.errors import OAuthConfigurationError
 from backend.app.auth.service import MalOAuthService
+from backend.app.commands.confirmation import PlanConfirmationService
+from backend.app.commands.executor import ChangePlanExecutor
+from backend.app.commands.planner import ChangePlanner
+from backend.app.commands.service import CommandApplicationService
 from backend.app.config import Settings, get_settings
+from backend.app.db.models import User
+from backend.app.db.repositories.command_plans import CommandPlanRepository
 from backend.app.db.repositories.title_aliases import TitleAliasRepository
+from backend.app.db.repositories.users import UserRepository
 from backend.app.db.session import get_db as _get_db
 from backend.app.mal.client import MalClient
 from backend.app.resolver.aliases import AliasService
@@ -39,6 +46,15 @@ def get_encryption_service(
         return EncryptionService(settings.token_encryption_key)
     except EncryptionError as exc:
         raise OAuthConfigurationError(str(exc)) from exc
+
+
+def get_local_user(
+    db: Annotated[Session, Depends(get_db_session)],
+) -> User:
+    """Return the singleton local application user."""
+    user = UserRepository(db).get_or_create_local_user()
+    db.commit()
+    return user
 
 
 async def get_mal_oauth_service(
@@ -103,4 +119,36 @@ def get_title_resolver(
         mal_client=client,
         alias_service=alias_service,
         policy=policy,
+    )
+
+
+def get_command_service(
+    db: Annotated[Session, Depends(get_db_session)],
+    client: Annotated[MalClient, Depends(get_mal_client)],
+    resolver: Annotated[TitleResolver, Depends(get_title_resolver)],
+    clock: Annotated[Clock, Depends(get_clock)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> CommandApplicationService:
+    """Provide the Phase 6 command application service."""
+    repository = CommandPlanRepository(db)
+    planner = ChangePlanner(
+        repository=repository,
+        resolver=resolver,
+        mal_client=client,
+        clock=clock,
+        plan_expiration_minutes=settings.plan_expiration_minutes,
+        max_plan_changes=settings.max_plan_changes,
+    )
+    confirmation = PlanConfirmationService(repository=repository, clock=clock)
+    executor = ChangePlanExecutor(
+        repository=repository,
+        mal_client=client,
+        clock=clock,
+    )
+    return CommandApplicationService(
+        planner=planner,
+        confirmation=confirmation,
+        executor=executor,
+        repository=repository,
+        clock=clock,
     )

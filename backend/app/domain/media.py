@@ -38,6 +38,7 @@ class ResolvedMedia(BaseModel):
     alternative_titles: list[str] = Field(default_factory=list)
     media_format: str | None = None
     release_year: int | None = None
+    publication_status: str | None = None
     total_episodes: int | None = Field(default=None, ge=0)
     total_chapters: int | None = Field(default=None, ge=0)
     total_volumes: int | None = Field(default=None, ge=0)

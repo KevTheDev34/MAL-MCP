@@ -113,21 +113,21 @@ Rules:
 - Absent list entries become explicit not-on-list domain state
 - Unknown MAL status strings fail with `INVALID_STATUS`
 
-Domain → MAL update mapping is deferred to Phase 6.
+Domain → MAL update mapping lives in Phase 6 (`proposed_*_state_to_update`).
 
 ## Serialization
 
 `canonical_domain_json(model)` dumps with Pydantic JSON mode, sorted keys, and
 compact separators. Enums serialize to stable strings. Datetimes must be
-timezone-aware. Phase 7 will hash a defined subset using this helper; hashing
-is not implemented yet.
+timezone-aware. Phase 6 plan hashing uses a dedicated command-layer helper;
+Phase 7 may expand audit hashing with this domain helper.
 
 ## Persistence
 
 Phase 4 does **not** add ORM tables or Alembic migrations for commands/plans.
-Serializable domain objects are the contract; `command_runs` /
-`change_plans` / `planned_changes` ship with the Phase 6 command service so
-unused tables are not created early.
+Serializable domain objects are the contract. Phase 6 adds `command_runs` /
+`change_plans` / `planned_items` / `application_attempts` — see
+[`docs/commands.md`](commands.md).
 
 Phase 5 adds `title_aliases` for user-specific shortcuts (see
 [`docs/resolver.md`](resolver.md)). Aliases live outside the pure domain
@@ -137,9 +137,9 @@ package.
 
 - Title normalization, candidate scoring, aliases, confidence calculation
   (implemented in Phase 5 — [`docs/resolver.md`](resolver.md))
-- Plan construction, plan hashing, confirmation, expiration enforcement
-- MAL write execution, read-after-write verification, bulk apply
+- Plan construction, confirmation, expiration enforcement, MAL write execution
+  (implemented in Phase 6 — [`docs/commands.md`](commands.md))
 - Audit history and undo
 - Natural-language / OpenAI integration
-- Recommendations, React UI, public write endpoints
+- Recommendations, React UI
 - Start/finish dates and rewatch/reread as domain request fields

@@ -76,7 +76,7 @@ Use this checklist as the authoritative build tracker.
 - [x] Add planned-change model
 - [x] Add change-plan model
 - [x] Add media-specific validation
-- [ ] Add database migrations *(deferred to Phase 6 — no unused command/plan tables in Phase 4; see `docs/domain.md`)*
+- [x] Add database migrations *(completed in Phase 6 — `0004_command_plans`)*
 
 ## Phase 5 — Title resolver
 
@@ -95,24 +95,24 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 6 — Plan and apply
 
-- [ ] Add `POST /commands/plan`
-- [ ] Read current MAL state
-- [ ] Build before/after state
-- [ ] Add validation warnings
-- [ ] Detect no-op changes
-- [ ] Store plan revisions
-- [ ] Add plan expiration
-- [ ] Add confirmation endpoint
-- [ ] Add apply endpoint
-- [ ] Re-read current state before apply
-- [ ] Detect stale plan conflicts
-- [ ] Apply update
-- [ ] Verify with read-after-write
-- [ ] Report partial bulk outcomes
+- [x] Add `POST /commands/plan`
+- [x] Read current MAL state
+- [x] Build before/after state
+- [x] Add validation warnings
+- [x] Detect no-op changes
+- [x] Store plan revisions
+- [x] Add plan expiration
+- [x] Add confirmation endpoint
+- [x] Add apply endpoint
+- [x] Re-read current state before apply
+- [x] Detect stale plan conflicts
+- [x] Apply update
+- [x] Verify with read-after-write
+- [x] Report partial bulk outcomes
 
 ## Phase 7 — Audit, idempotency, undo
 
-- [ ] Add plan hashing
+- [ ] Add plan hashing *(basic confirmation hash shipped in Phase 6; expand audit/idempotency hashing here)*
 - [ ] Add idempotency key
 - [ ] Prevent replay
 - [ ] Store request and verified results

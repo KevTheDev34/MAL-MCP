@@ -14,14 +14,16 @@ from backend.app.domain.enums import (
 )
 from backend.app.domain.errors import DomainValidationError
 from backend.app.domain.media import ResolvedMedia
-from backend.app.domain.state import CurrentListState
+from backend.app.domain.state import CurrentListState, ProposedListState
 from backend.app.mal.models import (
     AlternativeTitles,
     AnimeDetails,
     AnimeListEntry,
+    AnimeListUpdate,
     AnimeSearchResult,
     MangaDetails,
     MangaListEntry,
+    MangaListUpdate,
     MangaSearchResult,
 )
 
@@ -92,6 +94,7 @@ def anime_details_to_resolved_media(
         ),
         media_format=details.media_type,
         release_year=details.release_year,
+        publication_status=details.status,
         total_episodes=details.num_episodes,
         total_chapters=None,
         total_volumes=None,
@@ -120,6 +123,7 @@ def manga_details_to_resolved_media(
         ),
         media_format=details.media_type,
         release_year=details.release_year,
+        publication_status=details.status,
         total_episodes=None,
         total_chapters=details.num_chapters,
         total_volumes=details.num_volumes,
@@ -184,3 +188,66 @@ def list_entry_or_none_to_current_state(
             code=DomainErrorCode.MEDIA_TYPE_MISMATCH,
         )
     return manga_list_entry_to_current_state(entry)
+
+
+def proposed_anime_state_to_update(
+    *,
+    before: CurrentListState,
+    after: ProposedListState,
+) -> AnimeListUpdate:
+    """Diff before/after anime domain states into a typed MAL update patch."""
+    if after.media_type is not MediaType.ANIME:
+        raise DomainValidationError(
+            "Anime update conversion requires anime proposed state",
+            code=DomainErrorCode.MEDIA_TYPE_MISMATCH,
+        )
+    fields: dict[str, object] = {}
+    if before.status != after.status and after.status is not None:
+        fields["status"] = str(after.status)
+    if before.score != after.score and after.score is not None:
+        fields["score"] = after.score
+    if (
+        before.episode_progress != after.episode_progress
+        and after.episode_progress is not None
+    ):
+        fields["num_watched_episodes"] = after.episode_progress
+    if not fields:
+        raise DomainValidationError(
+            "No anime fields differ between before and after states",
+            code=DomainErrorCode.NO_MUTABLE_FIELDS,
+        )
+    return AnimeListUpdate.model_validate(fields)
+
+
+def proposed_manga_state_to_update(
+    *,
+    before: CurrentListState,
+    after: ProposedListState,
+) -> MangaListUpdate:
+    """Diff before/after manga domain states into a typed MAL update patch."""
+    if after.media_type is not MediaType.MANGA:
+        raise DomainValidationError(
+            "Manga update conversion requires manga proposed state",
+            code=DomainErrorCode.MEDIA_TYPE_MISMATCH,
+        )
+    fields: dict[str, object] = {}
+    if before.status != after.status and after.status is not None:
+        fields["status"] = str(after.status)
+    if before.score != after.score and after.score is not None:
+        fields["score"] = after.score
+    if (
+        before.chapter_progress != after.chapter_progress
+        and after.chapter_progress is not None
+    ):
+        fields["num_chapters_read"] = after.chapter_progress
+    if (
+        before.volume_progress != after.volume_progress
+        and after.volume_progress is not None
+    ):
+        fields["num_volumes_read"] = after.volume_progress
+    if not fields:
+        raise DomainValidationError(
+            "No manga fields differ between before and after states",
+            code=DomainErrorCode.NO_MUTABLE_FIELDS,
+        )
+    return MangaListUpdate.model_validate(fields)

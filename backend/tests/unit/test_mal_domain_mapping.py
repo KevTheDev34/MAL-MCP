@@ -50,6 +50,7 @@ def test_anime_details_conversion() -> None:
     assert media.media_format == "tv"
     assert media.release_year == 2011
     assert media.total_episodes == 24
+    assert media.publication_status == ANIME_NODE.get("status")
     assert media.total_chapters is None
     assert media.total_volumes is None
     assert "Steins Gate" in media.alternative_titles

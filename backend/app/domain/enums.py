@@ -77,6 +77,10 @@ class DomainErrorCode(StrEnum):
     MEDIA_TYPE_MISMATCH = "media_type_mismatch"
     TIMEZONE_REQUIRED = "timezone_required"
     EMPTY_USER_ID = "empty_user_id"
+    PROGRESS_EXCEEDS_TOTAL = "progress_exceeds_total"
+    DUPLICATE_TARGET_CONFLICT = "duplicate_target_conflict"
+    PLAN_TOO_LARGE = "plan_too_large"
+    EMPTY_PLAN = "empty_plan"
 
 
 class PlanWarningCode(StrEnum):
@@ -86,3 +90,46 @@ class PlanWarningCode(StrEnum):
     PROGRESS_OVERWRITE = "progress_overwrite"
     STATUS_OVERWRITE = "status_overwrite"
     ONGOING_COMPLETED = "ongoing_completed"
+    UNKNOWN_COMPLETION_TOTAL = "unknown_completion_total"
+    NOT_PREVIOUSLY_ON_LIST = "not_previously_on_list"
+
+
+class PlannedItemOutcomeKind(StrEnum):
+    """Per-item planning outcomes for a change plan."""
+
+    READY = "ready"
+    NOOP = "noop"
+    AMBIGUOUS = "ambiguous"
+    NOT_FOUND = "not_found"
+    INVALID = "invalid"
+    LOOKUP_FAILED = "lookup_failed"
+
+
+class ApplyResultKind(StrEnum):
+    """Per-item apply outcomes."""
+
+    VERIFIED = "verified"
+    NOOP = "noop"
+    SKIPPED_UNRESOLVED = "skipped_unresolved"
+    SKIPPED_INVALID = "skipped_invalid"
+    SKIPPED_NOOP = "skipped_noop"
+    STALE_CONFLICT = "stale_conflict"
+    MAL_VALIDATION_FAILURE = "mal_validation_failure"
+    TEMPORARY_FAILURE = "temporary_failure"
+    AUTHENTICATION_FAILURE = "authentication_failure"
+    VERIFICATION_MISMATCH = "verification_mismatch"
+    VERIFICATION_UNKNOWN = "verification_unknown"
+    SKIPPED_AUTH_STOP = "skipped_auth_stop"
+    NOT_ATTEMPTED = "not_attempted"
+
+
+class ApplicationAttemptState(StrEnum):
+    """Lifecycle of a single item application attempt."""
+
+    NOT_ATTEMPTED = "not_attempted"
+    WRITING = "writing"
+    WRITTEN_UNVERIFIED = "written_unverified"
+    VERIFIED = "verified"
+    CONFLICT = "conflict"
+    FAILED = "failed"
+    SKIPPED = "skipped"
