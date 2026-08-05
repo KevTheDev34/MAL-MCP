@@ -54,6 +54,7 @@ mypy backend/app
 - `docs/behavior.md` — behavioral contract
 - `docs/oauth-setup.md` — register a MAL API app and connect OAuth
 - `docs/mal-client.md` — raw MAL API client, retries, and manual reversible test
+- `docs/domain.md` — application-domain models, validation, and lifecycle states
 
 ## Connect MAL (Phase 2)
 
@@ -74,6 +75,14 @@ OAuth tokens are encrypted at rest and are never returned by the API.
 
 Typed authenticated MAL HTTP access lives in `backend/app/mal/`. See
 [`docs/mal-client.md`](docs/mal-client.md).
+
+## Domain model (Phase 4)
+
+Typed application-domain models (requested changes, resolved media, list
+states, plans, command lifecycle) live in `backend/app/domain/`. See
+[`docs/domain.md`](docs/domain.md). MAL transport models stay in
+`backend/app/mal/models.py`; converters are in
+`backend/app/mal/domain_mapping.py`.
 
 After connecting OAuth, you can run a reversible list update against a known
 MAL ID (interactive confirmation; no deletes):

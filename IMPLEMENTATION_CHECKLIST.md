@@ -68,15 +68,15 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 4 — Domain model
 
-- [ ] Add media enums
-- [ ] Add status enums
-- [ ] Add command-state enum
-- [ ] Add requested-change model
-- [ ] Add resolved-media model
-- [ ] Add planned-change model
-- [ ] Add change-plan model
-- [ ] Add media-specific validation
-- [ ] Add database migrations
+- [x] Add media enums
+- [x] Add status enums
+- [x] Add command-state enum
+- [x] Add requested-change model
+- [x] Add resolved-media model
+- [x] Add planned-change model
+- [x] Add change-plan model
+- [x] Add media-specific validation
+- [ ] Add database migrations *(deferred to Phase 6 — no unused command/plan tables in Phase 4; see `docs/domain.md`)*
 
 ## Phase 5 — Title resolver
 

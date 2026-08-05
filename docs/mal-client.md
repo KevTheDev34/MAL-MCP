@@ -58,6 +58,16 @@ There are **no** public FastAPI routes for these operations in Phase 3.
 
 Tokens never appear in logs, exception messages, or script output.
 
+## Transport versus application domain
+
+Models in this package are **MAL transport** shapes (API field names, form
+bodies, pagination). Application-domain models (`RequestedChange`,
+`ResolvedMedia`, list states, plans) live in `backend/app/domain/` and are
+documented in [`docs/domain.md`](domain.md).
+
+Convert transport → domain with `backend.app.mal.domain_mapping`. Do not
+import the MAL HTTP client from the domain package.
+
 ## Typed models
 
 Minimum fields for later title resolution and planning are modeled:
