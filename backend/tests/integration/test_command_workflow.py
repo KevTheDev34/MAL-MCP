@@ -113,7 +113,19 @@ def _build_service(
     resolver: Any,
     mal: Any,
 ) -> CommandApplicationService:
+    from backend.app.commands.history import HistoryService
+    from backend.app.commands.recovery import ApplicationRecoveryService
+    from backend.app.commands.undo import UndoService
+    from backend.app.domain.enums import CommandSourceType
+
     repo = CommandPlanRepository(db_session)
+    undo = UndoService(
+        repository=repo,
+        mal_client=mal,
+        clock=clock,
+        plan_expiration_minutes=30,
+        source_type=CommandSourceType.API,
+    )
     planner = ChangePlanner(
         repository=repo,
         resolver=resolver,
@@ -123,13 +135,27 @@ def _build_service(
         max_plan_changes=25,
     )
     confirmation = PlanConfirmationService(repository=repo, clock=clock)
-    executor = ChangePlanExecutor(repository=repo, mal_client=mal, clock=clock)
+    executor = ChangePlanExecutor(
+        repository=repo,
+        mal_client=mal,
+        clock=clock,
+        apply_claim_stale_seconds=120,
+        undo_service=undo,
+    )
     return CommandApplicationService(
         planner=planner,
         confirmation=confirmation,
         executor=executor,
         repository=repo,
         clock=clock,
+        recovery=ApplicationRecoveryService(
+            repository=repo,
+            mal_client=mal,
+            clock=clock,
+            apply_claim_stale_seconds=120,
+        ),
+        undo=undo,
+        history=HistoryService(repository=repo),
     )
 
 

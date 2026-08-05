@@ -1,6 +1,8 @@
-"""Typed command-layer errors for plan/confirm/apply."""
+"""Typed command-layer errors for plan/confirm/apply/audit/undo."""
 
 from __future__ import annotations
+
+from typing import Any
 
 
 class CommandError(Exception):
@@ -82,3 +84,68 @@ class PlanResolveFailedError(CommandError):
     def __init__(self, message: str, *, code: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+class AuditError(CommandError):
+    """Base class for audit / history / idempotency errors."""
+
+    error_code = "audit_error"
+
+
+class HistoryNotFoundError(AuditError):
+    error_code = "history_not_found"
+
+
+class IdempotencyConflictError(AuditError):
+    error_code = "idempotency_conflict"
+
+
+class AttemptAlreadyInProgressError(AuditError):
+    error_code = "attempt_already_in_progress"
+
+
+class AttemptOutcomeUnknownError(AuditError):
+    error_code = "attempt_outcome_unknown"
+
+
+class RecoveryNotRequiredError(AuditError):
+    error_code = "recovery_not_required"
+
+
+class UndoError(CommandError):
+    """Base class for undo / reverse-plan errors."""
+
+    error_code = "undo_error"
+
+
+class UndoNotEligibleError(UndoError):
+    error_code = "undo_not_eligible"
+
+
+class UndoAlreadyCompletedError(UndoError):
+    error_code = "undo_already_completed"
+
+
+class UndoConflictError(UndoError):
+    error_code = "undo_conflict"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        conflict: dict[str, Any] | None = None,
+    ) -> None:
+        self.conflict = conflict or {}
+        super().__init__(message)
+
+
+class UndoSourceNotVerifiedError(UndoError):
+    error_code = "undo_source_not_verified"
+
+
+class UndoTargetMissingError(UndoError):
+    error_code = "undo_target_missing"
+
+
+class UndoInProgressError(UndoError):
+    error_code = "undo_in_progress"

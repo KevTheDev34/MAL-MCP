@@ -173,14 +173,24 @@ Undo creates a new reverse plan. It never erases audit history.
 
 Algorithm:
 
-1. Locate the last verified applied change (or the change the user named).
+1. Locate the verified applied change (or the change the user named).
 2. Read the current remote MAL entry.
-3. Compare it with the verified after-state from the original apply.
-4. If unchanged: propose restoring the before-state; preview and confirm.
-5. If changed externally (or by a later command): warn that undo would
-   overwrite newer data; require confirmation before applying the reverse plan.
-6. Apply and verify the reverse update.
-7. Record the undo as its own auditable command.
+3. Identify fields originally changed (before ≠ after).
+4. For each originally changed field, compare current remote value to the
+   verified after-state.
+5. If all originally changed fields still match: propose restoring only those
+   fields to the before-state (preserve unrelated current fields); preview and
+   confirm.
+6. If any originally changed field differs externally: return a typed conflict
+   for that item. Do not create an applyable reverse item that would overwrite
+   the newer same-field value.
+7. Apply and verify the reverse update through the normal plan workflow.
+8. Record the undo as its own auditable command linked to the original.
+
+Newly added entries (`before` not on list) are not automatically undoable in
+Phase 7; restoration would require list-entry removal, which is deferred.
+
+Undo must never erase audit history.
 
 ---
 
@@ -282,14 +292,14 @@ The assistant must not say MAL was updated before verified apply success.
 
 ### 9.9 Undo with conflict
 
-**User:** "Undo the last update." (user also changed the entry on MAL.com)
+**User:** "Undo the last update." (user also changed the same field on MAL.com)
 
 **Expected behavior:**
 
-1. Detect remote ≠ verified after-state.
-2. Warn that undo would overwrite newer data; show both states.
-3. Require confirmation before reverse apply.
-4. If the user cancels, leave remote unchanged and keep audit history.
+1. Detect same-field remote ≠ verified after-state.
+2. Report a typed conflict with before, verified after, and current values.
+3. Do not create an applyable reverse write for that conflicting item.
+4. Leave remote unchanged and keep audit history.
 
 ### 9.10 Cancel
 

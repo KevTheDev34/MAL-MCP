@@ -5,11 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import Counter
-from datetime import UTC
+from datetime import UTC, timedelta
 from uuid import UUID
 
+from backend.app.commands.audit import (
+    dump_sanitized_json,
+    sanitize_error_message,
+    sanitize_request_payload,
+)
 from backend.app.commands.errors import (
-    PlanAlreadyAppliedError,
+    AttemptAlreadyInProgressError,
     PlanCanceledError,
     PlanConcurrencyError,
     PlanExpiredError,
@@ -18,18 +23,20 @@ from backend.app.commands.errors import (
     PlanOwnershipError,
     PlanRevisionMismatchError,
 )
+from backend.app.commands.idempotency import build_apply_idempotency_key
 from backend.app.commands.models import AppliedItemResult, ApplyPlanResponse
 from backend.app.commands.verify import (
     states_equal_for_stale_check,
     verify_proposed_against_remote,
 )
-from backend.app.db.models import PlannedItem
+from backend.app.db.models import ApplicationAttempt, PlannedItem
 from backend.app.db.repositories.command_plans import CommandPlanRepository
 from backend.app.domain.enums import (
     ApplicationAttemptState,
     ApplyResultKind,
     CommandState,
     MediaType,
+    OutcomeCertainty,
     PlannedItemOutcomeKind,
 )
 from backend.app.domain.state import CurrentListState, ProposedListState
@@ -60,10 +67,14 @@ class ChangePlanExecutor:
         repository: CommandPlanRepository,
         mal_client: MalClient,
         clock: Clock,
+        apply_claim_stale_seconds: int = 120,
+        undo_service: object | None = None,
     ) -> None:
         self._repository = repository
         self._mal = mal_client
         self._clock = clock
+        self._stale_seconds = apply_claim_stale_seconds
+        self._undo_service = undo_service
 
     async def apply(
         self,
@@ -84,10 +95,10 @@ class ChangePlanExecutor:
         if plan.state == CommandState.REJECTED.value:
             raise PlanCanceledError("Canceled plans cannot be applied")
 
-        # Idempotent return for completed plans.
         if plan.state in (
             CommandState.VERIFIED.value,
             CommandState.PARTIALLY_APPLIED.value,
+            CommandState.REVERTED.value,
         ):
             rows = self._repository.list_items(plan.id)
             results = self._repository.build_apply_results(rows)
@@ -105,11 +116,20 @@ class ChangePlanExecutor:
             plan.state == CommandState.FAILED.value
             and plan.apply_completed_at is not None
         ):
-            raise PlanAlreadyAppliedError("Plan already finished in a failed state")
+            rows = self._repository.list_items(plan.id)
+            results = self._repository.build_apply_results(rows)
+            return ApplyPlanResponse(
+                plan_id=plan_id,
+                revision=plan.revision,
+                state=CommandState.FAILED,
+                already_applied=True,
+                requires_new_plan=True,
+                results=results,
+                counts=_count_results(results),
+            )
 
         now = self._clock.now()
 
-        # Resume interrupted applying state.
         if plan.state == CommandState.APPLYING.value:
             return await self._continue_apply(plan_id=plan_id, user_id=user_id)
 
@@ -160,6 +180,28 @@ class ChangePlanExecutor:
         assert plan is not None
         if plan.user_id != user_id:
             raise PlanOwnershipError("Plan does not belong to the authenticated user")
+
+        now = self._clock.now()
+        if plan.apply_started_at is not None:
+            started = plan.apply_started_at
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=UTC)
+            # Block only when a non-stale writing attempt exists.
+            for row in self._repository.list_items(plan.id):
+                attempts = self._repository.list_attempts_for_item(row.id)
+                if not attempts:
+                    continue
+                latest = attempts[-1]
+                if latest.state != ApplicationAttemptState.WRITING.value:
+                    continue
+                attempt_started = latest.started_at
+                if attempt_started.tzinfo is None:
+                    attempt_started = attempt_started.replace(tzinfo=UTC)
+                if (now - attempt_started) < timedelta(seconds=self._stale_seconds):
+                    raise AttemptAlreadyInProgressError(
+                        "Application attempt is still in progress"
+                    )
+
         lock = _APPLY_LOCKS.setdefault(str(plan_id), asyncio.Lock())
         async with lock:
             return await self._execute_items(plan_id=plan_id)
@@ -172,9 +214,7 @@ class ChangePlanExecutor:
         stop_remaining = False
 
         for row in sorted(rows, key=lambda r: r.apply_order):
-            if row.apply_result_kind in (
-                ApplyResultKind.VERIFIED.value,
-            ):
+            if row.apply_result_kind == ApplyResultKind.VERIFIED.value:
                 results.append(
                     AppliedItemResult(
                         item_id=UUID(row.id),
@@ -214,20 +254,20 @@ class ChangePlanExecutor:
                 results.append(self._skip_item(row, ApplyResultKind.NOT_ATTEMPTED))
                 continue
 
-            # Recovery: written_unverified attempts.
             attempts = self._repository.list_attempts_for_item(row.id)
-            if (
-                attempts
-                and attempts[-1].state
-                == ApplicationAttemptState.WRITTEN_UNVERIFIED.value
-            ):
-                recovered = await self._recover_unverified(row, attempts[-1].id)
-                results.append(recovered)
-                if recovered.result is ApplyResultKind.AUTHENTICATION_FAILURE:
-                    stop_remaining = True
-                continue
+            if attempts:
+                latest = attempts[-1]
+                if latest.state in (
+                    ApplicationAttemptState.WRITING.value,
+                    ApplicationAttemptState.WRITTEN_UNVERIFIED.value,
+                ):
+                    recovered = await self._recover_interrupted(row, latest)
+                    results.append(recovered)
+                    if recovered.result is ApplyResultKind.AUTHENTICATION_FAILURE:
+                        stop_remaining = True
+                    continue
 
-            item_result = await self._apply_ready_item(row)
+            item_result = await self._apply_ready_item(row, plan)
             results.append(item_result)
             if item_result.result is ApplyResultKind.AUTHENTICATION_FAILURE:
                 stop_remaining = True
@@ -245,6 +285,12 @@ class ChangePlanExecutor:
         run = self._repository.get_command_run(plan.command_run_id)
         if run is not None:
             self._repository.update_command_run_state(run, state=overall, now=now)
+
+        if self._undo_service is not None:
+            marker = getattr(self._undo_service, "mark_reversions_after_apply", None)
+            if callable(marker):
+                marker(reverse_plan_id=plan.id, now=now)
+
         self._repository._session.commit()
 
         requires_new = any(
@@ -283,18 +329,57 @@ class ChangePlanExecutor:
             canonical_title=row.canonical_title,
         )
 
-    async def _apply_ready_item(self, row: PlannedItem) -> AppliedItemResult:
+    async def _apply_ready_item(
+        self,
+        row: PlannedItem,
+        plan: object,
+    ) -> AppliedItemResult:
+        from backend.app.db.models import ChangePlanRecord
+
+        assert isinstance(plan, ChangePlanRecord)
         assert row.before_json and row.after_json and row.media_type and row.mal_id
         before = CurrentListState.model_validate_json(row.before_json)
         after = ProposedListState.model_validate_json(row.after_json)
         media_type = MediaType(row.media_type)
         now = self._clock.now()
 
+        key = build_apply_idempotency_key(
+            user_id=plan.user_id,
+            plan_id=plan.id,
+            revision=plan.revision,
+            planned_item_id=row.id,
+            plan_hash=plan.plan_hash,
+        )
+        existing = self._repository.get_attempt_by_idempotency_key(key)
+        if existing is not None:
+            if existing.state == ApplicationAttemptState.VERIFIED.value:
+                verified = None
+                if existing.verified_state_json:
+                    verified = CurrentListState.model_validate_json(
+                        existing.verified_state_json
+                    )
+                return AppliedItemResult(
+                    item_id=UUID(row.id),
+                    apply_order=row.apply_order,
+                    result=ApplyResultKind.VERIFIED,
+                    mal_id=row.mal_id,
+                    media_type=media_type,
+                    canonical_title=row.canonical_title,
+                    verified_state=verified,
+                )
+            if existing.state in (
+                ApplicationAttemptState.WRITING.value,
+                ApplicationAttemptState.WRITTEN_UNVERIFIED.value,
+            ):
+                return await self._recover_interrupted(row, existing)
+
         attempt = self._repository.create_attempt(
             planned_item_id=row.id,
             attempt_number=len(self._repository.list_attempts_for_item(row.id)) + 1,
             state=ApplicationAttemptState.WRITING,
             now=now,
+            idempotency_key=key,
+            outcome_certainty=OutcomeCertainty.UNCERTAIN,
         )
         self._repository._session.commit()
 
@@ -326,9 +411,10 @@ class ChangePlanExecutor:
                 now=self._clock.now(),
                 observed_state_json=observed.model_dump_json(),
                 error_type="stale_conflict",
-                error_message_redacted=(
+                error_message_redacted=sanitize_error_message(
                     "Current MAL state differs from planned before-state"
                 ),
+                outcome_certainty=OutcomeCertainty.CERTAIN,
             )
             self._repository.set_item_apply_result(
                 row,
@@ -353,7 +439,10 @@ class ChangePlanExecutor:
                     before=before,
                     after=after,
                 )
-                attempt.request_json = anime_update.model_dump_json(exclude_none=True)
+                sanitized = sanitize_request_payload(
+                    anime_update.model_dump(exclude_none=True)
+                )
+                attempt.request_json = dump_sanitized_json(sanitized or {})
                 self._repository._session.flush()
                 await self._mal.update_anime_list_entry(row.mal_id, anime_update)
             else:
@@ -361,7 +450,10 @@ class ChangePlanExecutor:
                     before=before,
                     after=after,
                 )
-                attempt.request_json = manga_update.model_dump_json(exclude_none=True)
+                sanitized = sanitize_request_payload(
+                    manga_update.model_dump(exclude_none=True)
+                )
+                attempt.request_json = dump_sanitized_json(sanitized or {})
                 self._repository._session.flush()
                 await self._mal.update_manga_list_entry(row.mal_id, manga_update)
         except MalAuthenticationError as exc:
@@ -383,12 +475,28 @@ class ChangePlanExecutor:
                 error_message=exc.message,
             )
         except MalTemporaryError as exc:
-            return self._fail_attempt(
-                row,
+            # Uncertain: request may have been accepted.
+            self._repository.finish_attempt(
                 attempt,
-                result=ApplyResultKind.TEMPORARY_FAILURE,
-                attempt_state=ApplicationAttemptState.FAILED,
+                state=ApplicationAttemptState.WRITTEN_UNVERIFIED,
+                now=self._clock.now(),
                 error_type=exc.error_code,
+                error_message_redacted=sanitize_error_message(exc.message),
+                outcome_certainty=OutcomeCertainty.UNCERTAIN,
+            )
+            self._repository.set_item_apply_result(
+                row,
+                result=ApplyResultKind.VERIFICATION_UNKNOWN,
+            )
+            self._repository._session.commit()
+            return AppliedItemResult(
+                item_id=UUID(row.id),
+                apply_order=row.apply_order,
+                result=ApplyResultKind.VERIFICATION_UNKNOWN,
+                mal_id=row.mal_id,
+                media_type=media_type,
+                canonical_title=row.canonical_title,
+                error_code=exc.error_code,
                 error_message=exc.message,
             )
         except MalError as exc:
@@ -401,27 +509,27 @@ class ChangePlanExecutor:
                 error_message=exc.message,
             )
 
-        # Persist written_unverified before verification read.
         self._repository.finish_attempt(
             attempt,
             state=ApplicationAttemptState.WRITTEN_UNVERIFIED,
             now=self._clock.now(),
-            update_response_json=json.dumps({"status": "accepted"}),
+            update_response_json=dump_sanitized_json({"status": "accepted"}),
+            outcome_certainty=OutcomeCertainty.UNCERTAIN,
         )
         self._repository._session.commit()
 
         return await self._verify_after_write(row, attempt, after, media_type)
 
-    async def _recover_unverified(
+    async def _recover_interrupted(
         self,
         row: PlannedItem,
-        _attempt_id: str,
+        attempt: ApplicationAttempt,
     ) -> AppliedItemResult:
-        assert row.after_json and row.media_type and row.mal_id
+        """Classify writing / written_unverified without issuing another write."""
+        assert row.before_json and row.after_json and row.media_type and row.mal_id
+        before = CurrentListState.model_validate_json(row.before_json)
         after = ProposedListState.model_validate_json(row.after_json)
         media_type = MediaType(row.media_type)
-        attempts = self._repository.list_attempts_for_item(row.id)
-        attempt = attempts[-1]
         try:
             observed = await self._read_current(media_type, row.mal_id)
         except MalAuthenticationError as exc:
@@ -432,6 +540,7 @@ class ChangePlanExecutor:
                 attempt_state=ApplicationAttemptState.FAILED,
                 error_type=exc.error_code,
                 error_message=exc.message,
+                certainty=OutcomeCertainty.UNCERTAIN,
             )
         except MalError as exc:
             return self._fail_attempt(
@@ -441,6 +550,7 @@ class ChangePlanExecutor:
                 attempt_state=ApplicationAttemptState.FAILED,
                 error_type=exc.error_code,
                 error_message=exc.message,
+                certainty=OutcomeCertainty.UNCERTAIN,
             )
 
         verification = verify_proposed_against_remote(
@@ -454,6 +564,8 @@ class ChangePlanExecutor:
                 state=ApplicationAttemptState.VERIFIED,
                 now=self._clock.now(),
                 verified_state_json=observed.model_dump_json(),
+                observed_state_json=observed.model_dump_json(),
+                outcome_certainty=OutcomeCertainty.RECOVERED,
             )
             self._repository.set_item_apply_result(row, result=ApplyResultKind.VERIFIED)
             self._repository._session.commit()
@@ -467,15 +579,47 @@ class ChangePlanExecutor:
                 verified_state=observed,
             )
 
+        if states_equal_for_stale_check(before, observed):
+            self._repository.finish_attempt(
+                attempt,
+                state=ApplicationAttemptState.FAILED,
+                now=self._clock.now(),
+                observed_state_json=observed.model_dump_json(),
+                error_type="failed_before_write",
+                error_message_redacted=sanitize_error_message(
+                    "Remote state still matches planned before-state"
+                ),
+                outcome_certainty=OutcomeCertainty.CERTAIN,
+            )
+            self._repository.set_item_apply_result(
+                row,
+                result=ApplyResultKind.TEMPORARY_FAILURE,
+            )
+            self._repository._session.commit()
+            return AppliedItemResult(
+                item_id=UUID(row.id),
+                apply_order=row.apply_order,
+                result=ApplyResultKind.TEMPORARY_FAILURE,
+                mal_id=row.mal_id,
+                media_type=media_type,
+                canonical_title=row.canonical_title,
+                observed_state=observed,
+                error_code="failed_before_write",
+                error_message="Remote state still matches planned before-state",
+            )
+
         self._repository.finish_attempt(
             attempt,
             state=ApplicationAttemptState.CONFLICT,
             now=self._clock.now(),
             observed_state_json=observed.model_dump_json(),
             error_type="verification_unknown",
-            error_message_redacted=(
-                verification.message or "Unverified write does not match intended state"
+            error_message_redacted=sanitize_error_message(
+                verification.message
+                or "Unverified write does not match intended state"
             ),
+            outcome_certainty=OutcomeCertainty.CERTAIN,
+            field_mismatches_json=json.dumps(verification.field_mismatches),
         )
         self._repository.set_item_apply_result(
             row,
@@ -498,13 +642,10 @@ class ChangePlanExecutor:
     async def _verify_after_write(
         self,
         row: PlannedItem,
-        attempt: object,
+        attempt: ApplicationAttempt,
         after: ProposedListState,
         media_type: MediaType,
     ) -> AppliedItemResult:
-        from backend.app.db.models import ApplicationAttempt
-
-        assert isinstance(attempt, ApplicationAttempt)
         assert row.mal_id is not None
         try:
             remote = await self._read_current(media_type, row.mal_id)
@@ -514,7 +655,8 @@ class ChangePlanExecutor:
                 state=ApplicationAttemptState.FAILED,
                 now=self._clock.now(),
                 error_type=exc.error_code,
-                error_message_redacted=exc.message,
+                error_message_redacted=sanitize_error_message(exc.message),
+                outcome_certainty=OutcomeCertainty.UNCERTAIN,
             )
             self._repository.set_item_apply_result(
                 row,
@@ -543,6 +685,7 @@ class ChangePlanExecutor:
                 state=ApplicationAttemptState.VERIFIED,
                 now=self._clock.now(),
                 verified_state_json=remote.model_dump_json() if remote else None,
+                outcome_certainty=OutcomeCertainty.CERTAIN,
             )
             self._repository.set_item_apply_result(row, result=ApplyResultKind.VERIFIED)
             self._repository._session.commit()
@@ -567,7 +710,9 @@ class ChangePlanExecutor:
             now=self._clock.now(),
             verified_state_json=remote.model_dump_json() if remote else None,
             error_type=verification.kind,
-            error_message_redacted=verification.message,
+            error_message_redacted=sanitize_error_message(verification.message),
+            outcome_certainty=OutcomeCertainty.CERTAIN,
+            field_mismatches_json=json.dumps(verification.field_mismatches),
         )
         self._repository.set_item_apply_result(row, result=result_kind)
         self._repository._session.commit()
@@ -587,22 +732,21 @@ class ChangePlanExecutor:
     def _fail_attempt(
         self,
         row: PlannedItem,
-        attempt: object,
+        attempt: ApplicationAttempt,
         *,
         result: ApplyResultKind,
         attempt_state: ApplicationAttemptState,
         error_type: str,
         error_message: str,
+        certainty: OutcomeCertainty = OutcomeCertainty.CERTAIN,
     ) -> AppliedItemResult:
-        from backend.app.db.models import ApplicationAttempt
-
-        assert isinstance(attempt, ApplicationAttempt)
         self._repository.finish_attempt(
             attempt,
             state=attempt_state,
             now=self._clock.now(),
             error_type=error_type,
-            error_message_redacted=error_message,
+            error_message_redacted=sanitize_error_message(error_message),
+            outcome_certainty=certainty,
         )
         self._repository.set_item_apply_result(row, result=result)
         self._repository._session.commit()

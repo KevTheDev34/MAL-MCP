@@ -23,7 +23,11 @@ from backend.app.auth.errors import (
     OAuthTokenTemporaryError,
 )
 from backend.app.commands.errors import (
+    AttemptAlreadyInProgressError,
+    AttemptOutcomeUnknownError,
     CommandError,
+    HistoryNotFoundError,
+    IdempotencyConflictError,
     PlanAlreadyAppliedError,
     PlanCanceledError,
     PlanConcurrencyError,
@@ -36,6 +40,14 @@ from backend.app.commands.errors import (
     PlanResolveFailedError,
     PlanRevisionMismatchError,
     PlanValidationError,
+    RecoveryNotRequiredError,
+    UndoAlreadyCompletedError,
+    UndoConflictError,
+    UndoError,
+    UndoInProgressError,
+    UndoNotEligibleError,
+    UndoSourceNotVerifiedError,
+    UndoTargetMissingError,
 )
 from backend.app.config import get_settings
 from backend.app.logging_config import configure_logging
@@ -80,6 +92,18 @@ _COMMAND_STATUS: dict[type[CommandError], int] = {
     PlanConcurrencyError: 409,
     PlanValidationError: 400,
     PlanResolveFailedError: 502,
+    HistoryNotFoundError: 404,
+    IdempotencyConflictError: 409,
+    AttemptAlreadyInProgressError: 409,
+    AttemptOutcomeUnknownError: 409,
+    RecoveryNotRequiredError: 409,
+    UndoNotEligibleError: 409,
+    UndoAlreadyCompletedError: 409,
+    UndoConflictError: 409,
+    UndoSourceNotVerifiedError: 409,
+    UndoTargetMissingError: 404,
+    UndoInProgressError: 409,
+    UndoError: 409,
 }
 
 

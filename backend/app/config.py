@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = 15
     oauth_state_expiration_minutes: int = 10
     token_refresh_skew_seconds: int = 60
+    apply_claim_stale_seconds: int = 120
+    audit_max_error_length: int = 500
+    audit_max_original_text_length: int = 4096
 
     # Title resolver budgets / thresholds (Phase 5)
     resolver_search_limit: int = 10

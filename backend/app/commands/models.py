@@ -10,10 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from backend.app.domain.enums import (
     ApplyResultKind,
+    CommandSourceType,
     CommandState,
     MediaType,
     PlannedItemOutcomeKind,
     PlanWarningCode,
+    ReversionLinkState,
+    ReversionStatus,
+    UndoItemOutcomeKind,
 )
 from backend.app.domain.media import ResolvedMedia
 from backend.app.domain.plans import PlanWarning
@@ -189,6 +193,158 @@ class ApplyPlanResponse(BaseModel):
     requires_new_plan: bool = False
     results: list[AppliedItemResult]
     counts: dict[str, int] = Field(default_factory=dict)
+
+
+class RecoveryItemResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    classification: str
+    apply_result: ApplyResultKind
+    wrote_again: bool = False
+    observed_state: CurrentListState | None = None
+    field_mismatches: list[str] = Field(default_factory=list)
+    message: str | None = None
+
+
+class RecoveryResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: UUID
+    revision: int
+    state: CommandState
+    items: list[RecoveryItemResult]
+    next_action: str
+
+
+class CreateUndoPlanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_ids: list[UUID] | None = None
+    reason: str | None = None
+
+
+class UndoItemPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    original_item_id: UUID
+    outcome: UndoItemOutcomeKind
+    mal_id: int | None = None
+    media_type: MediaType | None = None
+    canonical_title: str | None = None
+    planned_before: CurrentListState | None = None
+    verified_after: CurrentListState | None = None
+    undo_check_observed: CurrentListState | None = None
+    proposed_restore: ProposedListState | None = None
+    changed_fields: list[str] = Field(default_factory=list)
+    conflict_fields: list[str] = Field(default_factory=list)
+    reason: str | None = None
+    reverse_item_id: UUID | None = None
+
+
+class UndoPlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    original_command_id: UUID
+    reverse_command_id: UUID
+    reverse_plan: ChangePlanView
+    items: list[UndoItemPreview]
+    ready_count: int
+    conflict_count: int
+    skipped_count: int
+
+
+class AttemptHistoryView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempt_id: UUID
+    attempt_number: int
+    state: str
+    idempotency_key: str
+    outcome_certainty: str
+    request: dict[str, Any] | None = None
+    update_response: dict[str, Any] | None = None
+    verified_state: CurrentListState | None = None
+    observed_state: CurrentListState | None = None
+    field_mismatches: list[str] = Field(default_factory=list)
+    error_type: str | None = None
+    error_message: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+
+
+class ReversionHistoryView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reversion_id: UUID
+    original_planned_item_id: UUID
+    reverse_planned_item_id: UUID
+    reverse_command_id: UUID
+    state: ReversionLinkState
+    fully_restored: bool | None = None
+    created_at: datetime
+    reverted_at: datetime | None = None
+
+
+class HistoryItemView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: UUID
+    apply_order: int
+    outcome_kind: PlannedItemOutcomeKind
+    apply_result_kind: ApplyResultKind | None = None
+    reversion_status: ReversionStatus
+    mal_id: int | None = None
+    media_type: MediaType | None = None
+    canonical_title: str | None = None
+    requested: RequestedChange
+    planned_before: CurrentListState | None = None
+    proposed_after: ProposedListState | None = None
+    is_noop: bool = False
+    undo_eligible: bool = False
+    attempts: list[AttemptHistoryView] = Field(default_factory=list)
+
+
+class HistoryCommandSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command_id: UUID
+    state: CommandState
+    source_type: CommandSourceType
+    parent_command_id: UUID | None = None
+    is_undo: bool
+    original_text: str | None = None
+    plan_id: UUID | None = None
+    revision: int | None = None
+    created_at: datetime
+    item_count: int = 0
+    verified_count: int = 0
+
+
+class HistoryCommandDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command_id: UUID
+    state: CommandState
+    source_type: CommandSourceType
+    parent_command_id: UUID | None = None
+    is_undo: bool
+    original_text: str | None = None
+    normalized_request: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    plan: ChangePlanView | None = None
+    items: list[HistoryItemView] = Field(default_factory=list)
+    reversions: list[ReversionHistoryView] = Field(default_factory=list)
+
+
+class HistoryListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[HistoryCommandSummary]
+    total: int
+    limit: int
+    offset: int
 
 
 def warning(

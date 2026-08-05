@@ -26,6 +26,7 @@ from backend.app.commands.models import (
 from backend.app.commands.propose import calculate_proposed_state, is_noop_change
 from backend.app.db.repositories.command_plans import CommandPlanRepository
 from backend.app.domain.enums import (
+    CommandSourceType,
     CommandState,
     DomainErrorCode,
     PlannedItemOutcomeKind,
@@ -83,6 +84,7 @@ class ChangePlanner:
         user_id: str,
         requested_changes: list[RequestedChange],
         original_text: str | None = None,
+        source_type: CommandSourceType = CommandSourceType.API,
     ) -> ChangePlanView:
         if not requested_changes:
             raise PlanValidationError(
@@ -110,6 +112,7 @@ class ChangePlanner:
             normalized_request_json=request_json,
             state=CommandState.RECEIVED,
             now=now,
+            source_type=source_type,
         )
         self._transition_run(run, CommandState.PARSED, now)
         self._transition_run(run, CommandState.RESOLVING, now)

@@ -112,15 +112,15 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 7 — Audit, idempotency, undo
 
-- [ ] Add plan hashing *(basic confirmation hash shipped in Phase 6; expand audit/idempotency hashing here)*
-- [ ] Add idempotency key
-- [ ] Prevent replay
-- [ ] Store request and verified results
-- [ ] Add history endpoint
-- [ ] Implement reverse plan
-- [ ] Detect external changes before undo
-- [ ] Verify undo
-- [ ] Preserve audit records
+- [x] Add plan hashing *(basic confirmation hash shipped in Phase 6; Phase 7 adds apply idempotency hashing)*
+- [x] Add idempotency key
+- [x] Prevent replay
+- [x] Store request and verified results
+- [x] Add history endpoint
+- [x] Implement reverse plan
+- [x] Detect external changes before undo
+- [x] Verify undo
+- [x] Preserve audit records
 
 ## Phase 8 — LLM interpreter
 

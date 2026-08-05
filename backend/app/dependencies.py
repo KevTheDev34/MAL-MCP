@@ -12,14 +12,18 @@ from backend.app.auth.errors import OAuthConfigurationError
 from backend.app.auth.service import MalOAuthService
 from backend.app.commands.confirmation import PlanConfirmationService
 from backend.app.commands.executor import ChangePlanExecutor
+from backend.app.commands.history import HistoryService
 from backend.app.commands.planner import ChangePlanner
+from backend.app.commands.recovery import ApplicationRecoveryService
 from backend.app.commands.service import CommandApplicationService
+from backend.app.commands.undo import UndoService
 from backend.app.config import Settings, get_settings
 from backend.app.db.models import User
 from backend.app.db.repositories.command_plans import CommandPlanRepository
 from backend.app.db.repositories.title_aliases import TitleAliasRepository
 from backend.app.db.repositories.users import UserRepository
 from backend.app.db.session import get_db as _get_db
+from backend.app.domain.enums import CommandSourceType
 from backend.app.mal.client import MalClient
 from backend.app.resolver.aliases import AliasService
 from backend.app.resolver.policy import ResolverPolicy
@@ -129,7 +133,7 @@ def get_command_service(
     clock: Annotated[Clock, Depends(get_clock)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> CommandApplicationService:
-    """Provide the Phase 6 command application service."""
+    """Provide the command application service with Phase 7 audit/undo."""
     repository = CommandPlanRepository(db)
     planner = ChangePlanner(
         repository=repository,
@@ -140,15 +144,35 @@ def get_command_service(
         max_plan_changes=settings.max_plan_changes,
     )
     confirmation = PlanConfirmationService(repository=repository, clock=clock)
+    undo = UndoService(
+        repository=repository,
+        mal_client=client,
+        clock=clock,
+        plan_expiration_minutes=settings.plan_expiration_minutes,
+        source_type=CommandSourceType.API,
+    )
     executor = ChangePlanExecutor(
         repository=repository,
         mal_client=client,
         clock=clock,
+        apply_claim_stale_seconds=settings.apply_claim_stale_seconds,
+        undo_service=undo,
     )
+    recovery = ApplicationRecoveryService(
+        repository=repository,
+        mal_client=client,
+        clock=clock,
+        apply_claim_stale_seconds=settings.apply_claim_stale_seconds,
+    )
+    history = HistoryService(repository=repository)
     return CommandApplicationService(
         planner=planner,
         confirmation=confirmation,
         executor=executor,
         repository=repository,
         clock=clock,
+        recovery=recovery,
+        undo=undo,
+        history=history,
+        source_type=CommandSourceType.API,
     )

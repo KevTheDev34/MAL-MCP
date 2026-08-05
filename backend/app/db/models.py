@@ -191,6 +191,17 @@ class CommandRun(Base):
     normalized_request_json: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(String(64), nullable=False)
     cancel_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_type: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="api",
+    )
+    parent_command_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("command_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -305,6 +316,11 @@ class PlannedItem(Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     apply_result_kind: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reversion_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="none",
+    )
 
 
 class ApplicationAttempt(Base):
@@ -316,6 +332,10 @@ class ApplicationAttempt(Base):
             "planned_item_id",
             "attempt_number",
             name="uq_application_attempts_item_number",
+        ),
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_application_attempts_idempotency_key",
         ),
     )
 
@@ -332,10 +352,17 @@ class ApplicationAttempt(Base):
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
     state: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(191), nullable=False)
+    outcome_certainty: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="certain",
+    )
     request_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     update_response_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verified_state_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     observed_state_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    field_mismatches_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message_redacted: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
@@ -343,6 +370,67 @@ class ApplicationAttempt(Base):
         nullable=False,
     )
     finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class ItemReversion(Base):
+    """Link between an original verified item and its reverse-plan item."""
+
+    __tablename__ = "item_reversions"
+    __table_args__ = (
+        UniqueConstraint(
+            "original_planned_item_id",
+            "reverse_planned_item_id",
+            name="uq_item_reversions_original_reverse",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    original_planned_item_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("planned_items.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    original_command_run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("command_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reverse_command_run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("command_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reverse_planned_item_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("planned_items.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    conflict_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fully_restored: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    reverted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

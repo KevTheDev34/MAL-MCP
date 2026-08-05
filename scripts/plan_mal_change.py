@@ -30,14 +30,22 @@ from sqlalchemy.orm import sessionmaker
 from backend.app.auth.service import MalOAuthService
 from backend.app.commands.confirmation import PlanConfirmationService
 from backend.app.commands.executor import ChangePlanExecutor
+from backend.app.commands.history import HistoryService
 from backend.app.commands.models import CreateChangePlanRequest
 from backend.app.commands.planner import ChangePlanner
+from backend.app.commands.recovery import ApplicationRecoveryService
 from backend.app.commands.service import CommandApplicationService
+from backend.app.commands.undo import UndoService
 from backend.app.config import get_settings
 from backend.app.db.repositories.command_plans import CommandPlanRepository
 from backend.app.db.repositories.title_aliases import TitleAliasRepository
 from backend.app.db.repositories.users import UserRepository
-from backend.app.domain.enums import AnimeStatus, MangaStatus, MediaType
+from backend.app.domain.enums import (
+    AnimeStatus,
+    CommandSourceType,
+    MangaStatus,
+    MediaType,
+)
 from backend.app.domain.requests import RequestedChange
 from backend.app.mal.client import MalClient
 from backend.app.resolver.aliases import AliasService
@@ -173,6 +181,13 @@ async def _main() -> int:
             policy=policy,
         )
         repo = CommandPlanRepository(session)
+        undo = UndoService(
+            repository=repo,
+            mal_client=client,
+            clock=clock,
+            plan_expiration_minutes=settings.plan_expiration_minutes,
+            source_type=CommandSourceType.DIAGNOSTIC,
+        )
         service = CommandApplicationService(
             planner=ChangePlanner(
                 repository=repo,
@@ -187,9 +202,20 @@ async def _main() -> int:
                 repository=repo,
                 mal_client=client,
                 clock=clock,
+                apply_claim_stale_seconds=settings.apply_claim_stale_seconds,
+                undo_service=undo,
             ),
             repository=repo,
             clock=clock,
+            recovery=ApplicationRecoveryService(
+                repository=repo,
+                mal_client=client,
+                clock=clock,
+                apply_claim_stale_seconds=settings.apply_claim_stale_seconds,
+            ),
+            undo=undo,
+            history=HistoryService(repository=repo),
+            source_type=CommandSourceType.DIAGNOSTIC,
         )
 
         requested = _build_requested(args)

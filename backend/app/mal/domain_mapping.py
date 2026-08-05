@@ -204,13 +204,16 @@ def proposed_anime_state_to_update(
     fields: dict[str, object] = {}
     if before.status != after.status and after.status is not None:
         fields["status"] = str(after.status)
-    if before.score != after.score and after.score is not None:
-        fields["score"] = after.score
-    if (
-        before.episode_progress != after.episode_progress
-        and after.episode_progress is not None
-    ):
-        fields["num_watched_episodes"] = after.episode_progress
+    if before.score != after.score:
+        if after.score is not None:
+            fields["score"] = after.score
+        elif before.score is not None:
+            fields["score"] = 0
+    if before.episode_progress != after.episode_progress:
+        if after.episode_progress is not None:
+            fields["num_watched_episodes"] = after.episode_progress
+        elif before.episode_progress is not None:
+            fields["num_watched_episodes"] = 0
     if not fields:
         raise DomainValidationError(
             "No anime fields differ between before and after states",
@@ -233,18 +236,21 @@ def proposed_manga_state_to_update(
     fields: dict[str, object] = {}
     if before.status != after.status and after.status is not None:
         fields["status"] = str(after.status)
-    if before.score != after.score and after.score is not None:
-        fields["score"] = after.score
-    if (
-        before.chapter_progress != after.chapter_progress
-        and after.chapter_progress is not None
-    ):
-        fields["num_chapters_read"] = after.chapter_progress
-    if (
-        before.volume_progress != after.volume_progress
-        and after.volume_progress is not None
-    ):
-        fields["num_volumes_read"] = after.volume_progress
+    if before.score != after.score:
+        if after.score is not None:
+            fields["score"] = after.score
+        elif before.score is not None:
+            fields["score"] = 0
+    if before.chapter_progress != after.chapter_progress:
+        if after.chapter_progress is not None:
+            fields["num_chapters_read"] = after.chapter_progress
+        elif before.chapter_progress is not None:
+            fields["num_chapters_read"] = 0
+    if before.volume_progress != after.volume_progress:
+        if after.volume_progress is not None:
+            fields["num_volumes_read"] = after.volume_progress
+        elif before.volume_progress is not None:
+            fields["num_volumes_read"] = 0
     if not fields:
         raise DomainValidationError(
             "No manga fields differ between before and after states",

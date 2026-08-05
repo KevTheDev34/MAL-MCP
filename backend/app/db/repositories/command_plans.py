@@ -23,14 +23,19 @@ from backend.app.db.models import (
     ApplicationAttempt,
     ChangePlanRecord,
     CommandRun,
+    ItemReversion,
     PlannedItem,
 )
 from backend.app.domain.enums import (
     ApplicationAttemptState,
     ApplyResultKind,
+    CommandSourceType,
     CommandState,
     MediaType,
+    OutcomeCertainty,
     PlannedItemOutcomeKind,
+    ReversionLinkState,
+    ReversionStatus,
 )
 from backend.app.domain.media import ResolvedMedia
 from backend.app.domain.plans import PlanWarning
@@ -53,6 +58,8 @@ class CommandPlanRepository:
         normalized_request_json: str,
         state: CommandState,
         now: datetime,
+        source_type: CommandSourceType = CommandSourceType.API,
+        parent_command_id: str | None = None,
     ) -> CommandRun:
         run = CommandRun(
             id=str(uuid4()),
@@ -60,6 +67,8 @@ class CommandPlanRepository:
             original_text=original_text,
             normalized_request_json=normalized_request_json,
             state=state.value,
+            source_type=source_type.value,
+            parent_command_id=parent_command_id,
             created_at=now,
             updated_at=now,
         )
@@ -133,6 +142,7 @@ class CommandPlanRepository:
             source_titles_json=json.dumps(item.source_titles, ensure_ascii=False),
             error_code=getattr(item, "error_code", None),
             error_message=getattr(item, "error_message", None),
+            reversion_status=ReversionStatus.NONE.value,
         )
         self._session.add(row)
         self._session.flush()
@@ -218,19 +228,32 @@ class CommandPlanRepository:
         attempt_number: int,
         state: ApplicationAttemptState,
         now: datetime,
+        idempotency_key: str,
         request_json: str | None = None,
+        outcome_certainty: OutcomeCertainty = OutcomeCertainty.UNCERTAIN,
     ) -> ApplicationAttempt:
         attempt = ApplicationAttempt(
             id=str(uuid4()),
             planned_item_id=planned_item_id,
             attempt_number=attempt_number,
             state=state.value,
+            idempotency_key=idempotency_key,
+            outcome_certainty=outcome_certainty.value,
             request_json=request_json,
             started_at=now,
         )
         self._session.add(attempt)
         self._session.flush()
         return attempt
+
+    def get_attempt_by_idempotency_key(
+        self,
+        idempotency_key: str,
+    ) -> ApplicationAttempt | None:
+        stmt = select(ApplicationAttempt).where(
+            ApplicationAttempt.idempotency_key == idempotency_key
+        )
+        return self._session.scalars(stmt).first()
 
     def finish_attempt(
         self,
@@ -243,6 +266,8 @@ class CommandPlanRepository:
         observed_state_json: str | None = None,
         error_type: str | None = None,
         error_message_redacted: str | None = None,
+        outcome_certainty: OutcomeCertainty | None = None,
+        field_mismatches_json: str | None = None,
     ) -> None:
         attempt.state = state.value
         attempt.finished_at = now
@@ -256,6 +281,10 @@ class CommandPlanRepository:
             attempt.error_type = error_type
         if error_message_redacted is not None:
             attempt.error_message_redacted = error_message_redacted
+        if outcome_certainty is not None:
+            attempt.outcome_certainty = outcome_certainty.value
+        if field_mismatches_json is not None:
+            attempt.field_mismatches_json = field_mismatches_json
         self._session.flush()
 
     def set_item_apply_result(
@@ -266,6 +295,158 @@ class CommandPlanRepository:
     ) -> None:
         item.apply_result_kind = result.value
         self._session.flush()
+
+    def set_item_reversion_status(
+        self,
+        item: PlannedItem,
+        *,
+        status: ReversionStatus,
+    ) -> None:
+        item.reversion_status = status.value
+        self._session.flush()
+
+    def get_planned_item(self, item_id: str) -> PlannedItem | None:
+        return self._session.get(PlannedItem, item_id)
+
+    def create_item_reversion(
+        self,
+        *,
+        user_id: str,
+        original_planned_item_id: str,
+        original_command_run_id: str,
+        reverse_command_run_id: str,
+        reverse_planned_item_id: str,
+        state: ReversionLinkState,
+        now: datetime,
+        conflict_json: str | None = None,
+    ) -> ItemReversion:
+        row = ItemReversion(
+            id=str(uuid4()),
+            user_id=user_id,
+            original_planned_item_id=original_planned_item_id,
+            original_command_run_id=original_command_run_id,
+            reverse_command_run_id=reverse_command_run_id,
+            reverse_planned_item_id=reverse_planned_item_id,
+            state=state.value,
+            conflict_json=conflict_json,
+            created_at=now,
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def list_reversions_for_original_item(
+        self,
+        original_planned_item_id: str,
+    ) -> list[ItemReversion]:
+        stmt = (
+            select(ItemReversion)
+            .where(ItemReversion.original_planned_item_id == original_planned_item_id)
+            .order_by(ItemReversion.created_at.asc())
+        )
+        return list(self._session.scalars(stmt).all())
+
+    def list_open_reversions_for_original_item(
+        self,
+        original_planned_item_id: str,
+    ) -> list[ItemReversion]:
+        stmt = select(ItemReversion).where(
+            ItemReversion.original_planned_item_id == original_planned_item_id,
+            ItemReversion.state == ReversionLinkState.PLANNED.value,
+        )
+        return list(self._session.scalars(stmt).all())
+
+    def list_reversions_for_command(
+        self,
+        command_run_id: str,
+    ) -> list[ItemReversion]:
+        stmt = (
+            select(ItemReversion)
+            .where(
+                (ItemReversion.original_command_run_id == command_run_id)
+                | (ItemReversion.reverse_command_run_id == command_run_id)
+            )
+            .order_by(ItemReversion.created_at.asc())
+        )
+        return list(self._session.scalars(stmt).all())
+
+    def mark_reversion_verified(
+        self,
+        reversion: ItemReversion,
+        *,
+        now: datetime,
+        fully_restored: bool = True,
+    ) -> None:
+        reversion.state = ReversionLinkState.VERIFIED.value
+        reversion.fully_restored = fully_restored
+        reversion.reverted_at = now
+        self._session.flush()
+
+    def get_plan_by_command_run(
+        self,
+        command_run_id: str,
+    ) -> ChangePlanRecord | None:
+        stmt = (
+            select(ChangePlanRecord)
+            .where(ChangePlanRecord.command_run_id == command_run_id)
+            .order_by(ChangePlanRecord.revision.desc())
+        )
+        return self._session.scalars(stmt).first()
+
+    def list_command_runs(
+        self,
+        *,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0,
+        state: str | None = None,
+        is_undo: bool | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+    ) -> list[CommandRun]:
+        stmt = select(CommandRun).where(CommandRun.user_id == user_id)
+        if state is not None:
+            stmt = stmt.where(CommandRun.state == state)
+        if is_undo is True:
+            stmt = stmt.where(CommandRun.parent_command_id.is_not(None))
+        elif is_undo is False:
+            stmt = stmt.where(CommandRun.parent_command_id.is_(None))
+        if created_after is not None:
+            stmt = stmt.where(CommandRun.created_at >= created_after)
+        if created_before is not None:
+            stmt = stmt.where(CommandRun.created_at <= created_before)
+        stmt = (
+            stmt.order_by(CommandRun.created_at.desc(), CommandRun.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(self._session.scalars(stmt).all())
+
+    def count_command_runs(
+        self,
+        *,
+        user_id: str,
+        state: str | None = None,
+        is_undo: bool | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+    ) -> int:
+        from sqlalchemy import func
+
+        stmt = select(func.count()).select_from(CommandRun).where(
+            CommandRun.user_id == user_id
+        )
+        if state is not None:
+            stmt = stmt.where(CommandRun.state == state)
+        if is_undo is True:
+            stmt = stmt.where(CommandRun.parent_command_id.is_not(None))
+        elif is_undo is False:
+            stmt = stmt.where(CommandRun.parent_command_id.is_(None))
+        if created_after is not None:
+            stmt = stmt.where(CommandRun.created_at >= created_after)
+        if created_before is not None:
+            stmt = stmt.where(CommandRun.created_at <= created_before)
+        return int(self._session.scalar(stmt) or 0)
 
     def items_to_results(self, rows: list[PlannedItem]) -> list[PlannedItemResult]:
         return [_row_to_item(row) for row in rows]
@@ -302,6 +483,11 @@ class CommandPlanRepository:
                     observed_state=observed,
                     error_code=latest.error_type if latest else None,
                     error_message=latest.error_message_redacted if latest else None,
+                    field_mismatches=(
+                        list(json.loads(latest.field_mismatches_json))
+                        if latest and latest.field_mismatches_json
+                        else []
+                    ),
                 )
             )
         return results

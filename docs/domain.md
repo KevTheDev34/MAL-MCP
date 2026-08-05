@@ -113,14 +113,18 @@ Rules:
 - Absent list entries become explicit not-on-list domain state
 - Unknown MAL status strings fail with `INVALID_STATUS`
 
-Domain → MAL update mapping lives in Phase 6 (`proposed_*_state_to_update`).
+Domain → MAL update mapping lives in `mal/domain_mapping.py`
+(`proposed_*_state_to_update`). Intentional score/progress clears emit MAL `0`.
+Status clear is not supported in MVP.
 
 ## Serialization
 
 `canonical_domain_json(model)` dumps with Pydantic JSON mode, sorted keys, and
 compact separators. Enums serialize to stable strings. Datetimes must be
 timezone-aware. Phase 6 plan hashing uses a dedicated command-layer helper;
-Phase 7 may expand audit hashing with this domain helper.
+Phase 7 uses plan hashing for confirmation binding and per-item apply
+idempotency keys. `canonical_domain_json` remains available for additional
+canonical serialization needs.
 
 ## Persistence
 

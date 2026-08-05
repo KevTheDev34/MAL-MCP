@@ -158,12 +158,20 @@ python scripts/plan_mal_change.py \
 
 The script uses `CommandApplicationService` (same path as the API).
 
-## Deferred to Phase 7
+## Phase 7 extensions
 
-- Undo / reverse plans
-- History endpoint and long-term audit UI
-- Expanded idempotency keys beyond plan-hash apply-once
+See [`docs/audit-undo.md`](audit-undo.md) for:
+
+- Durable audit sanitization
+- Per-item idempotency keys
+- Application recovery
+- History endpoints
+- Field-level undo / reverse plans
+
+## Still deferred
+
 - Background retries
 - Conversational clarification → automatic revision API
 - Multi-instance apply leasing
 - Compensation after partial bulk failure
+- Natural-language interpretation (Phase 8)

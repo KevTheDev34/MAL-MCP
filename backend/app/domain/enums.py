@@ -133,3 +133,48 @@ class ApplicationAttemptState(StrEnum):
     CONFLICT = "conflict"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class CommandSourceType(StrEnum):
+    """How a command run was created."""
+
+    API = "api"
+    DIAGNOSTIC = "diagnostic"
+
+
+class OutcomeCertainty(StrEnum):
+    """Whether an application attempt outcome is known."""
+
+    CERTAIN = "certain"
+    UNCERTAIN = "uncertain"
+    RECOVERED = "recovered"
+
+
+class ReversionStatus(StrEnum):
+    """Derived reversion summary on a planned item."""
+
+    NONE = "none"
+    UNDO_PLANNED = "undo_planned"
+    REVERTED = "reverted"
+    REVERSION_CONFLICT = "reversion_conflict"
+    NOT_REVERSIBLE = "not_reversible"
+
+
+class ReversionLinkState(StrEnum):
+    """Lifecycle of an original→reverse item link."""
+
+    PLANNED = "planned"
+    VERIFIED = "verified"
+    CONFLICT = "conflict"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
+class UndoItemOutcomeKind(StrEnum):
+    """Per-item outcome when building an undo plan."""
+
+    READY = "ready"
+    CONFLICT = "conflict"
+    ALREADY_REVERTED = "already_reverted"
+    NOT_REVERSIBLE = "not_reversible"
+    LOOKUP_FAILED = "lookup_failed"
