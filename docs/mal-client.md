@@ -38,6 +38,7 @@ token refresh. The client only consumes `get_valid_access_token()`.
 | `search_anime` / `search_manga` | `GET /anime` / `GET /manga` |
 | `get_anime` / `get_manga` | `GET /anime/{id}` / `GET /manga/{id}` |
 | `get_anime_list_entry` / `get_manga_list_entry` | `GET /anime/{id}` or `/manga/{id}` with `fields=...,my_list_status` (missing `my_list_status` → `None`) |
+| `get_anime_resolution_context` / `get_manga_resolution_context` | Same fields as list-entry lookup, but always returns `(details, on_list: bool)` so not-on-list titles still yield details |
 | `update_anime_list_entry` / `update_manga_list_entry` | `PATCH .../my_list_status` (form-urlencoded) |
 | `delete_anime_list_entry` / `delete_manga_list_entry` | `DELETE .../my_list_status` (`404` = no-op) |
 | `iter_anime_list` / `iter_manga_list` | `GET /users/@me/animelist` / `mangalist` + `paging.next` |

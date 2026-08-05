@@ -129,9 +129,14 @@ Serializable domain objects are the contract; `command_runs` /
 `change_plans` / `planned_changes` ship with the Phase 6 command service so
 unused tables are not created early.
 
+Phase 5 adds `title_aliases` for user-specific shortcuts (see
+[`docs/resolver.md`](resolver.md)). Aliases live outside the pure domain
+package.
+
 ## What Phase 4 intentionally does not implement
 
 - Title normalization, candidate scoring, aliases, confidence calculation
+  (implemented in Phase 5 — [`docs/resolver.md`](resolver.md))
 - Plan construction, plan hashing, confirmation, expiration enforcement
 - MAL write execution, read-after-write verification, bulk apply
 - Audit history and undo

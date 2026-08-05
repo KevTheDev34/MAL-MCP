@@ -246,29 +246,54 @@ def manga_list_entry_from_status(
     )
 
 
+def anime_resolution_context_from_payload(
+    payload: dict[str, Any],
+) -> tuple[AnimeDetails, bool]:
+    """Parse anime details and whether the title is on the user's list.
+
+    Unlike ``anime_list_entry_from_details``, details are retained when the
+    title is not on the list.
+    """
+    if "id" not in payload:
+        raise ValueError("Anime details missing id")
+    list_status = payload.get("my_list_status")
+    if list_status is not None and not isinstance(list_status, dict):
+        raise ValueError("Anime details my_list_status was malformed")
+    details = AnimeDetails.model_validate(payload)
+    return details, list_status is not None
+
+
+def manga_resolution_context_from_payload(
+    payload: dict[str, Any],
+) -> tuple[MangaDetails, bool]:
+    """Parse manga details and whether the title is on the user's list."""
+    if "id" not in payload:
+        raise ValueError("Manga details missing id")
+    list_status = payload.get("my_list_status")
+    if list_status is not None and not isinstance(list_status, dict):
+        raise ValueError("Manga details my_list_status was malformed")
+    details = MangaDetails.model_validate(payload)
+    return details, list_status is not None
+
+
 def anime_list_entry_from_details(payload: dict[str, Any]) -> AnimeListEntry | None:
     """Build an entry from anime details that include ``my_list_status``.
 
     Returns ``None`` when the media exists but is not on the user's list.
     """
-    if "id" not in payload:
-        raise ValueError("Anime details missing id")
-    list_status = payload.get("my_list_status")
-    if list_status is None:
+    details, on_list = anime_resolution_context_from_payload(payload)
+    if not on_list:
         return None
+    list_status = payload.get("my_list_status")
     if not isinstance(list_status, dict):
         raise ValueError("Anime details my_list_status was malformed")
     return AnimeListEntry(
-        mal_id=int(payload["id"]),
-        title=payload.get("title"),
-        alternative_titles=(
-            AlternativeTitles.model_validate(payload["alternative_titles"])
-            if isinstance(payload.get("alternative_titles"), dict)
-            else None
-        ),
-        media_type=payload.get("media_type"),
-        start_date=payload.get("start_date"),
-        num_episodes=payload.get("num_episodes"),
+        mal_id=details.id,
+        title=details.title,
+        alternative_titles=details.alternative_titles,
+        media_type=details.media_type,
+        start_date=details.start_date,
+        num_episodes=details.num_episodes,
         list_status=AnimeListStatus.model_validate(list_status),
     )
 
@@ -278,25 +303,20 @@ def manga_list_entry_from_details(payload: dict[str, Any]) -> MangaListEntry | N
 
     Returns ``None`` when the media exists but is not on the user's list.
     """
-    if "id" not in payload:
-        raise ValueError("Manga details missing id")
-    list_status = payload.get("my_list_status")
-    if list_status is None:
+    details, on_list = manga_resolution_context_from_payload(payload)
+    if not on_list:
         return None
+    list_status = payload.get("my_list_status")
     if not isinstance(list_status, dict):
         raise ValueError("Manga details my_list_status was malformed")
     return MangaListEntry(
-        mal_id=int(payload["id"]),
-        title=payload.get("title"),
-        alternative_titles=(
-            AlternativeTitles.model_validate(payload["alternative_titles"])
-            if isinstance(payload.get("alternative_titles"), dict)
-            else None
-        ),
-        media_type=payload.get("media_type"),
-        start_date=payload.get("start_date"),
-        num_chapters=payload.get("num_chapters"),
-        num_volumes=payload.get("num_volumes"),
+        mal_id=details.id,
+        title=details.title,
+        alternative_titles=details.alternative_titles,
+        media_type=details.media_type,
+        start_date=details.start_date,
+        num_chapters=details.num_chapters,
+        num_volumes=details.num_volumes,
         list_status=MangaListStatus.model_validate(list_status),
     )
 

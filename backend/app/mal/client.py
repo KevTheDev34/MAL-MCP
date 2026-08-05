@@ -57,9 +57,11 @@ from backend.app.mal.models import (
     anime_list_entry_from_details,
     anime_list_entry_from_list_item,
     anime_list_entry_from_status,
+    anime_resolution_context_from_payload,
     manga_list_entry_from_details,
     manga_list_entry_from_list_item,
     manga_list_entry_from_status,
+    manga_resolution_context_from_payload,
 )
 from backend.app.mal.pagination import parse_list_page_data, parse_paging
 from backend.app.mal.token_provider import MalAccessTokenProvider
@@ -218,6 +220,44 @@ class MalClient:
         except (ValidationError, ValueError, TypeError) as exc:
             raise MalUnexpectedResponseError(
                 "Manga list status response was invalid"
+            ) from exc
+
+    async def get_anime_resolution_context(
+        self,
+        anime_id: int,
+    ) -> tuple[AnimeDetails, bool]:
+        """Return anime details and whether the title is on the user's list.
+
+        Uses one GET with ``my_list_status`` so not-on-list titles still yield
+        details (unlike ``get_anime_list_entry``, which returns ``None``).
+        """
+        payload = await self._request_json(
+            "GET",
+            f"/anime/{anime_id}",
+            params={"fields": ANIME_LIST_ENTRY_FIELDS},
+        )
+        try:
+            return anime_resolution_context_from_payload(payload)
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise MalUnexpectedResponseError(
+                "Anime resolution context response was invalid"
+            ) from exc
+
+    async def get_manga_resolution_context(
+        self,
+        manga_id: int,
+    ) -> tuple[MangaDetails, bool]:
+        """Return manga details and whether the title is on the user's list."""
+        payload = await self._request_json(
+            "GET",
+            f"/manga/{manga_id}",
+            params={"fields": MANGA_LIST_ENTRY_FIELDS},
+        )
+        try:
+            return manga_resolution_context_from_payload(payload)
+        except (ValidationError, ValueError, TypeError) as exc:
+            raise MalUnexpectedResponseError(
+                "Manga resolution context response was invalid"
             ) from exc
 
     async def update_anime_list_entry(

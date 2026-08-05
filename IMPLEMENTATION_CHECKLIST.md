@@ -80,18 +80,18 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 5 — Title resolver
 
-- [ ] Normalize title strings
-- [ ] Search both media types when unspecified
-- [ ] Enrich candidates
-- [ ] Score candidates
-- [ ] Store confidence reasons
-- [ ] Define thresholds
-- [ ] Return ambiguity candidates
-- [ ] Add title aliases
-- [ ] Build resolver test corpus
-- [ ] Test remakes and seasons
-- [ ] Test anime/manga collisions
-- [ ] Test movie/TV collisions
+- [x] Normalize title strings
+- [x] Search both media types when unspecified
+- [x] Enrich candidates
+- [x] Score candidates
+- [x] Store confidence reasons
+- [x] Define thresholds
+- [x] Return ambiguity candidates
+- [x] Add title aliases
+- [x] Build resolver test corpus
+- [x] Test remakes and seasons
+- [x] Test anime/manga collisions
+- [x] Test movie/TV collisions
 
 ## Phase 6 — Plan and apply
 

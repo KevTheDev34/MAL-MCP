@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     oauth_state_expiration_minutes: int = 10
     token_refresh_skew_seconds: int = 60
 
+    # Title resolver budgets / thresholds (Phase 5)
+    resolver_search_limit: int = 10
+    resolver_max_enrich_candidates: int = 5
+    resolver_max_ambiguity_candidates: int = 3
+    resolver_max_mal_gets: int = 10
+    resolver_resolve_min_confidence: float = 0.90
+    resolver_resolve_min_margin: float = 20.0
+    resolver_resolve_min_raw_score: float = 40.0
+    resolver_plausible_min_raw_score: float = 25.0
+
     def require_mal_oauth_settings(self) -> None:
         """Raise ValueError if required MAL OAuth settings are missing."""
         missing: list[str] = []

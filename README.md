@@ -55,6 +55,7 @@ mypy backend/app
 - `docs/oauth-setup.md` — register a MAL API app and connect OAuth
 - `docs/mal-client.md` — raw MAL API client, retries, and manual reversible test
 - `docs/domain.md` — application-domain models, validation, and lifecycle states
+- `docs/resolver.md` — deterministic title resolution, scoring, and aliases
 
 ## Connect MAL (Phase 2)
 
@@ -84,8 +85,20 @@ states, plans, command lifecycle) live in `backend/app/domain/`. See
 `backend/app/mal/models.py`; converters are in
 `backend/app/mal/domain_mapping.py`.
 
-After connecting OAuth, you can run a reversible list update against a known
-MAL ID (interactive confirmation; no deletes):
+## Title resolver (Phase 5)
+
+Deterministic title → MAL media resolution lives in `backend/app/resolver/`.
+See [`docs/resolver.md`](docs/resolver.md).
+
+After connecting OAuth, resolve a title without writing to MAL:
+
+```bash
+python scripts/resolve_title.py "Steins;Gate"
+python scripts/resolve_title.py "Pluto" --media manga
+```
+
+After connecting OAuth, you can also run a reversible list update against a
+known MAL ID (interactive confirmation; no deletes):
 
 ```bash
 python scripts/mal_reversible_list_update.py \
