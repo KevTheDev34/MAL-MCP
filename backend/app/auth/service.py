@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -15,6 +16,7 @@ from backend.app.auth.errors import (
     OAuthStateExpiredError,
     OAuthStateInvalidError,
     OAuthTokenExchangeError,
+    OAuthTokenTemporaryError,
 )
 from backend.app.auth.mal_oauth import MalOAuthHttpClient
 from backend.app.auth.pkce import generate_code_verifier, generate_oauth_state
@@ -32,6 +34,10 @@ from backend.app.services.clock import Clock
 from backend.app.services.encryption import EncryptionError, EncryptionService
 
 logger = logging.getLogger(__name__)
+
+# Single-process MVP: serialize refresh so concurrent callers cannot rotate
+# the same refresh token twice. Multi-worker deployments need stronger coord.
+_REFRESH_LOCK = asyncio.Lock()
 
 
 class MalOAuthService:
@@ -179,15 +185,25 @@ class MalOAuthService:
         logger.info("MAL OAuth disconnected for local user")
         return MalDisconnectResponse(connected=False)
 
-    async def get_valid_access_token(self) -> str:
-        """Return a valid access token, refreshing when near expiry."""
+    async def get_valid_access_token(self, *, force_refresh: bool = False) -> str:
+        """Return a valid access token, refreshing when near expiry or forced.
+
+        Concurrent refresh is serialized with a process-scoped lock (single-
+        worker MVP). Definitive refresh failures clear stored tokens; temporary
+        network/5xx failures leave credentials intact.
+        """
         self._ensure_oauth_configured()
         user = self._users.get_or_create_local_user()
         credential = self._token_store.get_credential(user.id)
         if credential is None:
             raise MalNotConnectedError("MAL is not connected")
 
-        tokens = self._token_store.decrypt_tokens(credential)
+        try:
+            tokens = self._token_store.decrypt_tokens(credential)
+        except EncryptionError as exc:
+            logger.warning("MAL token decrypt failed: %s", type(exc).__name__)
+            raise MalReconnectRequiredError("MAL reconnect is required") from exc
+
         if tokens is None:
             raise MalReconnectRequiredError("MAL reconnect is required")
 
@@ -197,27 +213,65 @@ class MalOAuthService:
         if expires_at is not None and expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=now.tzinfo)
 
-        if expires_at is not None and expires_at > now + skew:
+        if (
+            not force_refresh
+            and expires_at is not None
+            and expires_at > now + skew
+        ):
             return tokens.access_token
 
-        try:
-            refreshed = await self._http.refresh_access_token(tokens.refresh_token)
-        except (OAuthTokenExchangeError, EncryptionError) as exc:
-            logger.warning("MAL token refresh failed: %s", type(exc).__name__)
-            self._token_store.clear_tokens(credential)
-            self._session.commit()
-            raise MalReconnectRequiredError("MAL reconnect is required") from exc
+        async with _REFRESH_LOCK:
+            # Re-read after acquiring the lock in case another waiter refreshed.
+            credential = self._token_store.get_credential(user.id)
+            if credential is None:
+                raise MalNotConnectedError("MAL is not connected")
+            try:
+                tokens = self._token_store.decrypt_tokens(credential)
+            except EncryptionError as exc:
+                logger.warning("MAL token decrypt failed: %s", type(exc).__name__)
+                raise MalReconnectRequiredError("MAL reconnect is required") from exc
+            if tokens is None:
+                raise MalReconnectRequiredError("MAL reconnect is required")
 
-        new_expires = now + timedelta(seconds=refreshed.expires_in)
-        self._token_store.save_tokens(
-            user_id=user.id,
-            provider_user_id=credential.provider_user_id,
-            provider_username=credential.provider_username,
-            access_token=refreshed.access_token,
-            refresh_token=refreshed.refresh_token,
-            expires_at=new_expires,
-            last_refresh_at=now,
-        )
-        self._session.commit()
-        logger.info("MAL access token refreshed")
-        return refreshed.access_token
+            now = self._clock.now()
+            expires_at = credential.expires_at
+            if expires_at is not None and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=now.tzinfo)
+            if (
+                not force_refresh
+                and expires_at is not None
+                and expires_at > now + skew
+            ):
+                return tokens.access_token
+
+            try:
+                refreshed = await self._http.refresh_access_token(tokens.refresh_token)
+            except OAuthTokenTemporaryError:
+                logger.warning("MAL token refresh temporarily failed")
+                raise
+            except (OAuthTokenExchangeError, EncryptionError) as exc:
+                logger.warning("MAL token refresh failed: %s", type(exc).__name__)
+                self._token_store.clear_tokens(credential)
+                self._session.commit()
+                raise MalReconnectRequiredError("MAL reconnect is required") from exc
+
+            new_expires = now + timedelta(seconds=refreshed.expires_in)
+            try:
+                self._token_store.save_tokens(
+                    user_id=user.id,
+                    provider_user_id=credential.provider_user_id,
+                    provider_username=credential.provider_username,
+                    access_token=refreshed.access_token,
+                    refresh_token=refreshed.refresh_token,
+                    expires_at=new_expires,
+                    last_refresh_at=now,
+                )
+            except EncryptionError as exc:
+                logger.warning("MAL token save failed: %s", type(exc).__name__)
+                self._token_store.clear_tokens(credential)
+                self._session.commit()
+                raise MalReconnectRequiredError("MAL reconnect is required") from exc
+
+            self._session.commit()
+            logger.info("MAL access token refreshed")
+            return refreshed.access_token

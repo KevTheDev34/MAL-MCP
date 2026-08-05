@@ -43,6 +43,12 @@ class OAuthTokenExchangeError(AuthError):
     error_code = "oauth_token_exchange_error"
 
 
+class OAuthTokenTemporaryError(AuthError):
+    """Token endpoint was unreachable or returned a temporary server error."""
+
+    error_code = "oauth_token_temporary_error"
+
+
 class OAuthIdentityError(AuthError):
     """Failed to retrieve or parse the MAL user identity."""
 

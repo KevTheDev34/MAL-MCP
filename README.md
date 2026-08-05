@@ -53,6 +53,7 @@ mypy backend/app
 - `IMPLEMENTATION_CHECKLIST.md` — phase tracker
 - `docs/behavior.md` — behavioral contract
 - `docs/oauth-setup.md` — register a MAL API app and connect OAuth
+- `docs/mal-client.md` — raw MAL API client, retries, and manual reversible test
 
 ## Connect MAL (Phase 2)
 
@@ -68,3 +69,19 @@ curl -s -X POST http://localhost:8000/auth/mal/disconnect
 ```
 
 OAuth tokens are encrypted at rest and are never returned by the API.
+
+## MAL client (Phase 3)
+
+Typed authenticated MAL HTTP access lives in `backend/app/mal/`. See
+[`docs/mal-client.md`](docs/mal-client.md).
+
+After connecting OAuth, you can run a reversible list update against a known
+MAL ID (interactive confirmation; no deletes):
+
+```bash
+python scripts/mal_reversible_list_update.py \
+  --media anime \
+  --mal-id 9253 \
+  --field score \
+  --value 8
+```

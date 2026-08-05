@@ -9,12 +9,19 @@ from urllib.parse import urlencode
 import httpx
 from pydantic import ValidationError
 
-from backend.app.auth.errors import OAuthIdentityError, OAuthTokenExchangeError
+from backend.app.auth.errors import (
+    OAuthIdentityError,
+    OAuthTokenExchangeError,
+    OAuthTokenTemporaryError,
+)
 from backend.app.auth.pkce import plain_code_challenge
 from backend.app.auth.schemas import MalTokenResponse, MalUser
 from backend.app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_DEFINITIVE_TOKEN_FAILURE_STATUSES = frozenset({400, 401, 403})
+_TEMPORARY_TOKEN_FAILURE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 class MalOAuthHttpClient:
@@ -109,13 +116,23 @@ class MalOAuthHttpClient:
             )
         except httpx.HTTPError as exc:
             logger.warning("MAL token request failed: %s", type(exc).__name__)
-            raise OAuthTokenExchangeError("Failed to reach MAL token endpoint") from exc
+            raise OAuthTokenTemporaryError(
+                "Failed to reach MAL token endpoint"
+            ) from exc
 
         if response.status_code != 200:
             logger.warning(
                 "MAL token request returned status=%s",
                 response.status_code,
             )
+            if response.status_code in _TEMPORARY_TOKEN_FAILURE_STATUSES:
+                raise OAuthTokenTemporaryError(
+                    "MAL token endpoint returned a temporary error"
+                )
+            if response.status_code in _DEFINITIVE_TOKEN_FAILURE_STATUSES:
+                raise OAuthTokenExchangeError("MAL token endpoint returned an error")
+            # Unexpected statuses are treated as definitive so callers do not
+            # silently keep a potentially invalid refresh token forever.
             raise OAuthTokenExchangeError("MAL token endpoint returned an error")
 
         try:

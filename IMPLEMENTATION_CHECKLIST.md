@@ -50,21 +50,21 @@ Use this checklist as the authoritative build tracker.
 
 ## Phase 3 — MAL client
 
-- [ ] Implement current-user call
-- [ ] Implement anime search
-- [ ] Implement manga search
-- [ ] Implement anime details
-- [ ] Implement manga details
-- [ ] Implement anime list lookup
-- [ ] Implement manga list lookup
-- [ ] Implement anime update
-- [ ] Implement manga update
-- [ ] Implement list pagination
-- [ ] Implement error taxonomy
-- [ ] Implement timeouts
-- [ ] Implement bounded retries
-- [ ] Add contract tests
-- [ ] Perform reversible real-account test
+- [x] Implement current-user call
+- [x] Implement anime search
+- [x] Implement manga search
+- [x] Implement anime details
+- [x] Implement manga details
+- [x] Implement anime list lookup
+- [x] Implement manga list lookup
+- [x] Implement anime update
+- [x] Implement manga update
+- [x] Implement list pagination
+- [x] Implement error taxonomy
+- [x] Implement timeouts
+- [x] Implement bounded retries
+- [x] Add contract tests
+- [x] Perform reversible real-account test
 
 ## Phase 4 — Domain model
 

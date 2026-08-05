@@ -12,6 +12,7 @@ from backend.app.auth.errors import OAuthConfigurationError
 from backend.app.auth.service import MalOAuthService
 from backend.app.config import Settings, get_settings
 from backend.app.db.session import get_db as _get_db
+from backend.app.mal.client import MalClient
 from backend.app.services.clock import Clock, SystemClock
 from backend.app.services.encryption import EncryptionError, EncryptionService
 
@@ -53,3 +54,15 @@ async def get_mal_oauth_service(
         yield service
     finally:
         await service.aclose()
+
+
+async def get_mal_client(
+    settings: Annotated[Settings, Depends(get_settings)],
+    oauth: Annotated[MalOAuthService, Depends(get_mal_oauth_service)],
+) -> AsyncIterator[MalClient]:
+    """Provide a request-scoped authenticated MAL API client."""
+    client = MalClient(settings=settings, token_provider=oauth)
+    try:
+        yield client
+    finally:
+        await client.aclose()

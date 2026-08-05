@@ -20,6 +20,7 @@ from backend.app.auth.errors import (
     OAuthStateExpiredError,
     OAuthStateInvalidError,
     OAuthTokenExchangeError,
+    OAuthTokenTemporaryError,
 )
 from backend.app.config import get_settings
 from backend.app.logging_config import configure_logging
@@ -32,6 +33,7 @@ _AUTH_STATUS: dict[type[AuthError], int] = {
     OAuthStateExpiredError: 400,
     OAuthProviderDeniedError: 400,
     OAuthTokenExchangeError: 502,
+    OAuthTokenTemporaryError: 502,
     OAuthIdentityError: 502,
     MalNotConnectedError: 404,
     MalReconnectRequiredError: 401,

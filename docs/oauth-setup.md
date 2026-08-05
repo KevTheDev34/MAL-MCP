@@ -106,6 +106,14 @@ This deletes stored encrypted credentials for the local user.
 - PKCE uses MAL’s supported `plain` method.
 - Access and refresh tokens are Fernet-encrypted in SQLite.
 - Automatic refresh runs when an access token is near expiry; failed refresh
-  clears tokens and sets `reconnect_required`.
+  clears tokens and sets `reconnect_required`. Transient network/5xx refresh
+  failures leave credentials intact.
 - Backup `TOKEN_ENCRYPTION_KEY` separately from the database. Losing the key
   makes stored tokens unreadable (reconnect MAL to recover).
+
+## Next: MAL API client
+
+Authenticated MAL reads and list updates use `MalClient`, which consumes
+`MalOAuthService.get_valid_access_token()`. See
+[`docs/mal-client.md`](mal-client.md) for the client API, retries, and the
+reversible manual list-update script.

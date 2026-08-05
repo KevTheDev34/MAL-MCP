@@ -167,3 +167,133 @@ def test_refresh_failure_clears_tokens_and_requires_reconnect(
     assert credential is not None
     assert credential.encrypted_access_token is None
     assert credential.encrypted_refresh_token is None
+
+
+def test_decrypt_failure_requires_reconnect(
+    db_session: Session,
+    oauth_settings: Settings,
+    fixed_clock: FixedClock,
+    encryption_service: EncryptionService,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    service = _build_service(
+        db_session,
+        oauth_settings,
+        fixed_clock,
+        encryption_service,
+        httpx.MockTransport(handler),
+    )
+    user = service._users.get_or_create_local_user()
+    service._token_store.save_tokens(
+        user_id=user.id,
+        provider_user_id="1",
+        provider_username="u",
+        access_token=FIXTURE_ACCESS_TOKEN,
+        refresh_token=FIXTURE_REFRESH_TOKEN,
+        expires_at=fixed_clock.now() + timedelta(hours=1),
+    )
+    db_session.commit()
+    credential = service._token_store.get_credential(user.id)
+    assert credential is not None
+    credential.encrypted_access_token = "not-valid-fernet-ciphertext"
+    db_session.commit()
+
+    async def _run() -> None:
+        try:
+            await service.get_valid_access_token()
+        finally:
+            await service.aclose()
+
+    with pytest.raises(MalReconnectRequiredError):
+        asyncio.run(_run())
+
+
+def test_transient_refresh_failure_preserves_tokens(
+    db_session: Session,
+    oauth_settings: Settings,
+    fixed_clock: FixedClock,
+    encryption_service: EncryptionService,
+) -> None:
+    from backend.app.auth.errors import OAuthTokenTemporaryError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "unavailable"})
+
+    service = _build_service(
+        db_session,
+        oauth_settings,
+        fixed_clock,
+        encryption_service,
+        httpx.MockTransport(handler),
+    )
+    user = service._users.get_or_create_local_user()
+    service._token_store.save_tokens(
+        user_id=user.id,
+        provider_user_id="1",
+        provider_username="u",
+        access_token=TOKEN_RESPONSE["access_token"],
+        refresh_token=TOKEN_RESPONSE["refresh_token"],
+        expires_at=datetime(2026, 8, 4, 15, 0, 30, tzinfo=UTC),
+    )
+    db_session.commit()
+
+    async def _run() -> None:
+        try:
+            await service.get_valid_access_token()
+        finally:
+            await service.aclose()
+
+    with pytest.raises(OAuthTokenTemporaryError):
+        asyncio.run(_run())
+
+    credential = service._token_store.get_credential(user.id)
+    assert credential is not None
+    assert credential.encrypted_access_token is not None
+    assert credential.encrypted_refresh_token is not None
+
+
+def test_concurrent_refresh_serialized(
+    db_session: Session,
+    oauth_settings: Settings,
+    fixed_clock: FixedClock,
+    encryption_service: EncryptionService,
+) -> None:
+    refresh_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        refresh_calls["n"] += 1
+        return httpx.Response(200, json=REFRESHED_TOKEN_RESPONSE)
+
+    service = _build_service(
+        db_session,
+        oauth_settings,
+        fixed_clock,
+        encryption_service,
+        httpx.MockTransport(handler),
+    )
+    user = service._users.get_or_create_local_user()
+    service._token_store.save_tokens(
+        user_id=user.id,
+        provider_user_id="1",
+        provider_username="u",
+        access_token=FIXTURE_ACCESS_TOKEN,
+        refresh_token=FIXTURE_REFRESH_TOKEN,
+        expires_at=fixed_clock.now() + timedelta(seconds=30),
+    )
+    db_session.commit()
+
+    async def _run() -> None:
+        try:
+            tokens = await asyncio.gather(
+                service.get_valid_access_token(),
+                service.get_valid_access_token(),
+            )
+            assert tokens[0] == FIXTURE_ACCESS_TOKEN_REFRESHED
+            assert tokens[1] == FIXTURE_ACCESS_TOKEN_REFRESHED
+        finally:
+            await service.aclose()
+
+    asyncio.run(_run())
+    assert refresh_calls["n"] == 1
